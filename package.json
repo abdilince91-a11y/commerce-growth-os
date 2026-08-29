@@ -1,0 +1,11 @@
+{
+  "name": "commerce-growth-os",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI-assisted commerce growth operating system",
+  "scripts": {
+    "test": "echo \"Tests will be added with first implementation slice\"",
+    "lint": "echo \"Lint config pending stack selection\"",
+    "typecheck": "echo \"Typecheck config pending stack selection\""
+  }
+}
