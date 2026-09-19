@@ -3,9 +3,33 @@
   "private": true,
   "version": "0.1.0",
   "description": "AI-assisted commerce growth operating system",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Tests will be added with first implementation slice\"",
-    "lint": "echo \"Lint config pending stack selection\"",
-    "typecheck": "echo \"Typecheck config pending stack selection\""
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev"
+  },
+  "dependencies": {
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@prisma/client": "^6.2.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "prisma": "^6.2.0",
+    "vitest": "^2.1.0",
+    "eslint": "^9.17.0",
+    "eslint-config-next": "^15.1.0",
+    "@eslint/eslintrc": "^3.2.0"
   }
 }

@@ -1,0 +1,78 @@
+// Canonical schema for Commerce Growth OS v0.1.
+// See docs/decisions/0001-canonical-product-schema.md and
+// docs/decisions/0002-human-approval-gate.md for the rationale behind
+// these shapes before changing them.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Availability {
+  in_stock
+  out_of_stock
+  preorder
+  backorder
+}
+
+model Product {
+  id                 String       @id @default(cuid())
+  sku                String       @unique
+  title              String
+  description        String
+  brand              String?
+  gtin               String?
+  mpn                String?
+  category           String
+  priceAmount        Int // minor units (e.g. cents)
+  priceCurrency      String
+  availability       Availability
+  images             String[]
+  attributes         Json         @default("{}")
+  sourceUpdatedAt    DateTime
+  canonicalUpdatedAt DateTime     @updatedAt
+  createdAt          DateTime     @default(now())
+
+  @@index([category])
+}
+
+enum ProposalType {
+  metadata_change
+  feed_update
+  budget_change
+  bid_change
+}
+
+enum ProposalStatus {
+  pending
+  approved
+  rejected
+  applied
+}
+
+enum ProposalCreatedBy {
+  system
+  user
+}
+
+model Proposal {
+  id           String            @id @default(cuid())
+  type         ProposalType
+  targetEntity String
+  targetId     String
+  before       Json
+  after        Json
+  rationale    String
+  status       ProposalStatus    @default(pending)
+  createdBy    ProposalCreatedBy
+  decidedBy    String?
+  decidedAt    DateTime?
+  createdAt    DateTime          @default(now())
+
+  @@index([status])
+  @@index([targetEntity, targetId])
+}

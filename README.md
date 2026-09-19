@@ -41,11 +41,33 @@ Canonical Product Data
 ## Engineering team
 Claude Code is organized around six specialist roles stored under `.claude/agents/`.
 
+## Tech stack
+TypeScript, Next.js (App Router), PostgreSQL, Prisma, Zod, Vitest, GitHub
+Actions. See `docs/decisions/0000-tech-stack.md` for rationale.
+
 ## Local setup
-1. Copy `.env.example` to `.env.local`.
+1. Copy `.env.example` to `.env.local` and point `DATABASE_URL` at a
+   local PostgreSQL instance.
 2. Add only local development credentials.
 3. Never commit `.env.local`.
-4. Run tests before opening a pull request.
+4. `npm install`
+5. `npm run prisma:generate` (generates the Prisma client; does not
+   require a live database)
+6. `npm run prisma:migrate` (applies the schema to your local database)
+7. `npm run dev` to start the app.
+8. Run `npm test`, `npm run lint`, and `npm run typecheck` before
+   opening a pull request.
+
+## Project structure
+```text
+prisma/schema.prisma   canonical Product + Proposal models
+src/app/                Next.js App Router (dashboard shell)
+src/lib/schema/         Zod validators for untrusted external input
+src/lib/db.ts           Prisma client singleton
+src/lib/proposals.ts    human-approval state machine (see ADR 0002)
+docs/decisions/          ADRs
+docs/plans/              implementation plans
+```
 
 ## First milestone
 See `docs/plans/v0.1.md`.
