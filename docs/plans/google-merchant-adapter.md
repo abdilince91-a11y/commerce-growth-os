@@ -1,6 +1,6 @@
 # Google Merchant Adapter — v0.1 Implementation Plan
 
-Status: DRAFT (revision 7) — Slice 0 is merged (PR #5, merge commit
+Status: DRAFT (revision 8) — Slice 0 is merged (PR #5, merge commit
 `fcaa5fb`). The later slices and the live phases follow the order and gates
 in §11; each still needs its own go-ahead.
 Branch: written on `feat/google-merchant-adapter` (merged); Slice 0 step 2
@@ -100,22 +100,29 @@ MerchantProductInput  (payload preview + productInputId)
 ### 3.1 Transport-independent interface
 
 ```ts
-// src/lib/merchant/google/adapter.ts
+// src/lib/merchant/google/adapter.ts — planned (Slice 3); not implemented yet.
+// Slice 2 ships `mapOffer` and `mapOffers` as plain functions in mapper.ts.
 export interface GoogleMerchantAdapter {
-  /** Pure. Maps one canonical offer to a Merchant API preview. */
-  mapProduct(input: MerchantOfferInput): MappingResult<MerchantProductInput>;
+  /** Pure. Maps one canonical offer: mapped, skipped (draft/archived), or invalid. */
+  mapOffer(input: MerchantOfferInput): MapOfferResult;
 
-  /** Pure. Maps a batch; validates cross-product rules (duplicate offerIds,
-   *  variant groups). Output order is sorted by productInputId. */
-  mapProducts(inputs: readonly MerchantOfferInput[]): BatchMappingResult;
+  /** Pure. Maps a batch; validates cross-offer rules (duplicate offerIds,
+   *  duplicate color/size, mixed currencies). Output is sorted by productInputId. */
+  mapOffers(inputs: readonly MerchantOfferInput[]): BatchMapResult;
 
-  /** Pure. Wraps a valid preview into a Proposal create-input. */
-  toFeedUpdateProposal(preview: MerchantProductInput, meta: PreviewMeta): ProposalCreateInput;
+  /** Pure. Wraps a mapped offer into a Proposal create-input (Slice 3). */
+  toFeedUpdateProposal(offer: MappedOffer, meta: PreviewMeta): ProposalCreateInput;
 }
 
-export type MappingResult<T> =
-  | { ok: true; value: T; warnings: MerchantIssue[] }
-  | { ok: false; issues: MerchantIssue[] };
+// Discriminated result (src/lib/merchant/google/types.ts, Slice 2). Draft and
+// archived records are `skipped`, not validation failures.
+export type MapOfferResult =
+  | { status: "mapped"; productInputId: string; productInput: MerchantProductInput;
+      warnings: readonly MerchantIssue[]; productId: string; variantId: string }
+  | { status: "skipped"; reason: "product_draft" | "product_archived" | "variant_draft" | "variant_archived";
+      productId: string; variantId: string }
+  | { status: "invalid"; issues: readonly MerchantIssue[];
+      productInputId?: string; productId?: string; variantId?: string };
 ```
 
 The adapter knows nothing about accounts, data sources, tokens, HTTP, or
@@ -129,30 +136,54 @@ The example request in Google's add/manage guide confirms this shape:
 with `offerId`, `contentLanguage`, `feedLabel`, and `productAttributes`.
 
 ```ts
+// The request body of accounts.productInputs.insert (Merchant API v1). The
+// local productInputId (contentLanguage~feedLabel~offerId, §4.3) is not an API
+// field. Implemented in src/lib/merchant/google/types.ts (Slice 2).
 export interface MerchantProductInput {
-  /** contentLanguage~feedLabel~offerId — see §4.3 */
-  productInputId: string;
   offerId: string;
   contentLanguage: string;   // e.g. "tr"
-  feedLabel: string;         // e.g. "TR"
+  feedLabel: string;         // e.g. "TR"; at most 20 characters
   productAttributes: {
     title: string;
     description: string;
     link: string;
     imageLink: string;
-    additionalImageLinks?: string[];
-    price: { amountMicros: string; currencyCode: string }; // §4.4
+    additionalImageLinks?: string[];   // at most 10
+    price: { amountMicros: string; currencyCode: "EUR" | "TRY" };      // §4.4
+    salePrice?: { amountMicros: string; currencyCode: "EUR" | "TRY" };
     availability: "IN_STOCK" | "OUT_OF_STOCK" | "PREORDER" | "BACKORDER";
-    availabilityDate?: string;   // ISO 8601, required for PREORDER/BACKORDER
+    availabilityDate?: string;         // ISO 8601 UTC; only for PREORDER/BACKORDER
     condition: "NEW" | "USED" | "REFURBISHED";
     gtins?: string[];
     mpn?: string;
     brand?: string;
-    itemGroupId?: string;
-    color?: string; sizes?: string[]; material?: string;
+    itemGroupId: string;
+    color?: string;
+    size?: string;                     // a single value: there is no `sizes` list
+    material?: string;
+    pattern?: string;
+    gender?: "MALE" | "FEMALE" | "UNISEX";
+    ageGroup?: "NEWBORN" | "INFANT" | "TODDLER" | "KIDS" | "ADULT";
+    sizeSystem?: "US" | "UK" | "EU" | "DE" | "FR" | "JP" | "CN" | "IT" | "BR" | "MEX" | "AU";
+    sizeTypes?: ("REGULAR" | "PETITE" | "PLUS" | "TALL" | "MATERNITY")[]; // at most two; API enum
   };
 }
 ```
+
+**Verified 2026-09-20 against Google's official sources** (this replaces the
+earlier draft shape; the draft's `sizes?: string[]` was wrong):
+
+- Merchant API v1 discovery document, revision 20260910:
+  `https://merchantapi.googleapis.com/$discovery/rest?version=products_v1`
+  (`ProductInput`, `ProductAttributes`, `Price`, and the inline enums for
+  `availability`, `condition`, `gender`, `ageGroup`, `sizeSystem`, and
+  `sizeTypes` items).
+- Product data specification, for the length limits:
+  `https://support.google.com/merchants/answer/7052112`.
+- Google's HTML reference pages
+  (`https://developers.google.com/merchant/api/reference/rest/products_v1/ProductAttributes`
+  and `.../accounts.productInputs`) rendered only navigation when fetched, so
+  they were not used as evidence.
 
 `amountMicros` is confirmed as a **JSON string** (ADR 0003 D11) and is
 always computed with **exact BigInt** arithmetic. Strings are also the
@@ -170,7 +201,7 @@ so that large value is a pure-function test case, not a storable price.
 |---|---|---|
 | `offerId` | `Variant.sku` | ≤ 50 chars; must not contain `~`, `/`, `%`, whitespace or control chars (§4.3) |
 | `contentLanguage` | Merchant channel configuration | 2-letter lowercase ISO 639-1; not product data |
-| `feedLabel` | Merchant channel configuration | uppercase letters/digits/`-`/`_`; must not contain `~`; not product data |
+| `feedLabel` | Merchant channel configuration | uppercase letters/digits/`-`/`_`; at most 20 characters; must not contain `~`; not product data |
 | `title` | derived variant title: `Product.title` plus the variant's distinguishing color/size (ADR 0003 D21; `Product.title` itself stays canonical, and the derivation belongs to the future mapper) | NFC-normalized, trimmed; ≤ 150 **code points**; error (never silent truncation) if longer |
 | `description` | `Product.description` | NFC-normalized, trimmed; ≤ 5000 code points; same rule |
 | `link` | storefront-derived context | a finished absolute URL supplied by a storefront link resolver (built from `Product.handle` and the variant); `http`/`https` only; no embedded credentials; error otherwise (F4) |
@@ -179,14 +210,14 @@ so that large value is a pure-function test case, not a storable price.
 | `price` / `salePrice` | `Variant.priceAmount`, `Variant.compareAtPriceAmount` | `compareAtPriceAmount` is the regular/original price and is valid only when strictly greater than `priceAmount` (ADR 0003 D19). When present, `price` is the compare-at value and `salePrice` is `priceAmount`; otherwise `price` is `priceAmount` and there is no `salePrice`. An invalid comparison is an error |
 | `price.amountMicros` (and `salePrice`) | `Variant.priceAmount`, `Variant.currency` | exact BigInt conversion (§4.4) of each amount; zero rejected; emitted as a JSON string |
 | `price.currencyCode` | `Variant.currency` | canonical value is an uppercase three-letter code (`VarChar(3)`, not an enum); **at this adapter's boundary exactly `EUR` or `TRY` are supported** (ADR 0003 D7); a malformed code → `invalid_currency`, a well-formed unsupported code → `unsupported_currency` |
-| `availability` | `Variant.availability` | explicit mapping table, canonical lowercase → Merchant uppercase: `in_stock→IN_STOCK`, `out_of_stock→OUT_OF_STOCK`, `preorder→PREORDER`, `backorder→BACKORDER` (the existing `Availability` enum, unchanged) |
+| `availability` | `Variant.availability` | explicit mapping table, canonical lowercase → Merchant uppercase: `in_stock→IN_STOCK`, `out_of_stock→OUT_OF_STOCK`, `preorder→PREORDER`, `backorder→BACKORDER` (the existing `Availability` enum, unchanged). Google's `LIMITED_AVAILABILITY` is intentionally not emitted: canonical `Availability` has no corresponding value |
 | `availabilityDate` | `Variant.availabilityDate` | ISO 8601; nullable in the canonical model. Google Merchant requires it for PREORDER/BACKORDER, so `preorder`/`backorder` offers are mapped **only when it exists**, otherwise the offer is not mapped and returns `missing_availability_date` (ADR 0003 D13). It is a channel requirement, not a canonical rule |
 | `condition` | `Product.condition` (default `new`) | explicit mapping table, canonical lowercase → Merchant uppercase: `new→NEW`, `used→USED`, `refurbished→REFURBISHED` |
 | `gtins` | `Variant.gtin` | validated **exactly as supplied** (ADR 0003 D17): 8/12/13/14 ASCII digits with a valid GS1 check digit; never trimmed, stripped of spaces or dashes, or zero-padded, so a value containing spaces or dashes is invalid; all-zero and coupon-prefix (98/99) values are rejected (§4.5) |
 | `mpn` | `Variant.mpn` | trimmed non-empty; ≤ 70 chars |
 | `brand` | `Product.brand` | trimmed non-empty; ≤ 70 chars |
 | `itemGroupId` | derived deterministically from `Product.id` | ≤ 50 chars; set on every offer of a product so it never changes when a variant is added (§4.2) |
-| `color`, `sizes` | `Variant.color`, `Variant.size` | `sizes` is the single `size` as a one-element array |
+| `color`, `size` | `Variant.color`, `Variant.size` | `size` is a single string (the API has no `sizes` list); each is NFC-normalized, trimmed, and length-checked without truncation |
 | `material` | `Product.material` | trimmed non-empty |
 
 Only offers whose `Product.status` and `Variant.status` are both `active`
@@ -206,11 +237,12 @@ Canonical data is a `Product` (the family) with one or more `Variant`s
 
 ```ts
 export interface MerchantOfferInput {
-  product: ProductInput;            // canonical parent, Zod-validated
-  variant: VariantInput;            // canonical variant, Zod-validated
+  product: ProductRecord;           // canonical parent record, with its stable Product.id
+  variant: VariantRecord;           // canonical variant record, with Variant.id and productId
   channel: MerchantChannelConfig;   // contentLanguage, feedLabel — configuration, not product data
   link: string;                     // storefront-derived landing-page URL, already resolved
 }
+// The mapper requires variant.productId === product.id.
 ```
 
 `MerchantOfferInput` is owned by the adapter and is the only thing the
@@ -506,20 +538,23 @@ New:
 docs/plans/google-merchant-adapter.md                 (this file)
 docs/decisions/0003-canonical-product-variant.md      (Slice 0: written and Accepted)
 docs/decisions/0004-google-merchant-adapter.md        (Slice 4: fixture-only boundary, v1 API, read-only-first live phase)
-src/lib/merchant/google/types.ts                      payload + input + issue types
-src/lib/merchant/google/errors.ts                     issue codes, safeIssueSummary
-src/lib/merchant/google/money.ts                      exponent table, minor-units/decimal → micros
-src/lib/merchant/google/identifiers.ts                offerId/contentLanguage/feedLabel/productInputId
-src/lib/merchant/google/gtin.ts                       exactly-as-supplied validation + GS1 checksum + coupon prefixes
-src/lib/merchant/google/text.ts                       NFC/trim, code-point length
-src/lib/merchant/google/urls.ts                       http/https-only URL validation
-src/lib/merchant/google/mapper.ts                     mapProductToMerchantInput, mapProducts
-src/lib/merchant/google/proposal.ts                   toFeedUpdateProposal
-src/lib/merchant/google/adapter.ts                    GoogleMerchantAdapter interface + factory
-src/lib/merchant/google/index.ts                      public exports
-src/lib/merchant/google/__fixtures__/*.ts             typed fixtures
-src/lib/merchant/google/*.test.ts                     one test file per module + guard test
+src/lib/merchant/google/types.ts                      payload + input + result types                 [Slice 2, done]
+src/lib/merchant/google/errors.ts                     issue codes, safeOfferId, summarizeIssues      [Slice 2, done]
+src/lib/merchant/google/money.ts                      exponent table, minor-units/decimal → micros   [Slice 1, done]
+src/lib/merchant/google/identifiers.ts                offerId/contentLanguage/feedLabel/productInputId [Slice 1, done]
+src/lib/merchant/google/gtin.ts                       exactly-as-supplied validation + GS1 checksum + coupon prefixes [Slice 1, done]
+src/lib/merchant/google/text.ts                       NFC/trim, code-point length                    [Slice 1, done]
+src/lib/merchant/google/urls.ts                       http/https-only URL validation                 [Slice 1, done]
+src/lib/merchant/google/mapper.ts                     mapOffer, mapOffers                            [Slice 2, done]
+src/lib/merchant/google/proposal.ts                   toFeedUpdateProposal                           [Slice 3, not started]
+src/lib/merchant/google/adapter.ts                    GoogleMerchantAdapter interface + factory      [Slice 3, not started]
+src/lib/merchant/google/index.ts                      public exports                                 [Slice 3, not started]
+src/lib/merchant/google/__fixtures__/*.ts             typed fixtures (helpers.ts, records.ts)        [Slice 2, done]
+src/lib/merchant/google/*.test.ts                     one test file per module                       [Slices 1-2 done; Slice 3 guard test not started]
 ```
+
+The ADR 0004 and the `CHANGELOG.md`/`docs/plans/v0.1.md`/`eslint.config.mjs`
+changes below belong to Slices 3–4 and are not done.
 
 Modified (small):
 
@@ -749,30 +784,56 @@ is asserted anywhere in this plan.
 | L2 | Is an "API developer" access level required, and by whom (the registering user, the calling user, or both)? |
 | L3 | Can an API data source be created in the Merchant Center UI, or only through the API, and which access level is needed to create it? |
 | L4 | Which OAuth consent-screen status applies to a personal-account owner, and what does it mean for refresh-token lifetime? |
-| L5 | Re-verify the exact `content` scope string on Google's official scopes page (§8.3 basis note). |
+| L5 | ~~Re-verify the exact `content` scope string.~~ **Verified in Slice 2:** the official Merchant API v1 discovery document lists `https://www.googleapis.com/auth/content` (revision 20260910). Google's scopes page itself was not consulted. |
 | L6 | What quotas and rate limits apply to the list/get methods? |
 | L7 | Which `feedLabel`, `contentLanguage`, and countries apply to the real account? (The currencies are decided: EUR and TRY.) |
 | L8 | Later phase: how is a write confirmed given asynchronous processing? |
 | L9 | Later phase: where are OAuth tokens stored (database model vs host secret store)? Needs its own ADR. |
 
-### Not yet verified (must be confirmed before Slice 2 finalizes types)
+### Verified in Slice 2 (2026-09-20)
 
-The Merchant API reference pages did not render through the documentation
-fetcher, so these come from the guides and product spec plus general
-knowledge and need a check against the reference:
+Checked against Google's official Merchant API v1 discovery document (revision
+20260910, `https://merchantapi.googleapis.com/$discovery/rest?version=products_v1`)
+and the product data specification (`https://support.google.com/merchants/answer/7052112`):
 
-- exact `productAttributes` names for `brand`, `mpn`, `itemGroupId`,
-  `additionalImageLinks`, `availabilityDate`, `color`, `sizes`, `material`
-- exact enum spellings beyond `IN_STOCK` and `NEW` (the guide example)
-- documented maximums: additional images, link length, `mpn`/`brand` length
-- `feedLabel` and `contentLanguage` constraints
-- escaping rules for an `offerId` containing reserved characters
-- whether MPN strictly requires brand
-- whether the typed apparel metadata added in ADR 0003 (`gender`, `ageGroup`,
-  `pattern`, `sizeSystem`, `sizeTypes`, `color`, `size`) fully covers
-  Merchant's apparel requirements, and how each maps to Merchant's values
+- `productAttributes` names for `brand`, `mpn`, `gtins`, `itemGroupId`,
+  `additionalImageLinks`, `availabilityDate`, `color`, `size` (single string,
+  not `sizes`), `material`, `pattern`, `gender`, `ageGroup`, `sizeSystem`,
+  `sizeTypes`, `salePrice`
+- enum spellings for `availability`, `condition`, `gender`, `ageGroup`,
+  `sizeSystem`, `sizeTypes` items
+- limits **confirmed by the discovery schema**: `feedLabel` at most 20
+  characters (`A-Z`, `0-9`, hyphen, underscore, no spaces), `sizeTypes` at
+  most two values, `gtins` at most 10, `size` a single value, and `offerId`
+  whitespace handling (§4.3 is unchanged: the mapper rejects reserved
+  characters and whitespace rather than escaping or rewriting them)
+- limits that come **only from the product data specification**, not the
+  discovery schema (the schema gives no lengths for these): `title` 150,
+  `description` 5000, `brand` 70, `mpn` 70, `color` 100, `size` 100,
+  `pattern` 100, `material` 200 (all in code points in the mapper), and at
+  most 10 `additionalImageLinks`
+- the `content` OAuth scope string (L5)
 
-(`amountMicros` as a JSON string was on this list and is now a confirmed
+Values intentionally not mapped, because the canonical domain has no source
+for them (the implementation is not changed to support them):
+
+- `BIG` size type: canonical `SizeType` is `regular | petite | plus | tall |
+  maternity` and has no `BIG` value
+- `LIMITED_AVAILABILITY`: canonical `Availability` has no corresponding value
+- the `*_UNSPECIFIED` enum members
+
+### Still not verified
+
+- link length limit
+- whether the API itself rejects an `mpn` without a `brand`. The mapper treats
+  it as an error, which is the stricter, conservative choice.
+- whether Merchant's apparel requirements are fully covered by the typed
+  metadata added in ADR 0003; the mapper emits `gender`, `ageGroup`,
+  `pattern`, `sizeSystem`, `sizeTypes`, `color`, and `size`, but per-country
+  requirements were not checked
+- `contentLanguage` constraints beyond the 2-letter lowercase check
+
+(`amountMicros` as a JSON string was on the earlier list and is a confirmed
 decision, ADR 0003 D11.)
 
 If any differs, the plan's types change but its structure does not. These
@@ -898,3 +959,27 @@ ADR 0004.
   zero-padded, so spaces and dashes make it invalid; all-zero and 98/99 coupon
   prefixes are rejected.
 - No other plan text was changed.
+
+**Revision 8 (2026-09-20, Slice 2 type corrections)**
+
+- §3.1 and §3.2 replaced with the types implemented in Slice 2: results are the
+  discriminated `mapped | skipped | invalid`, and the payload is the verified
+  Merchant API v1 `insert` body. There is no `productInputId` API field and no
+  `sizes` list; `size` is one string. `salePrice`, `pattern`, `gender`,
+  `ageGroup`, `sizeSystem`, and `sizeTypes` were added.
+- §4.1: `feedLabel` is limited to 20 characters; the `color`/`size` row corrected.
+- §4.2: `MerchantOfferInput` carries `ProductRecord`/`VariantRecord` (stable ids),
+  and the mapper requires `variant.productId === product.id`.
+- §13: verified items and their official sources recorded; unverified items listed.
+  L5 resolved from the discovery document.
+- §9 file list annotated with per-file status (Slices 1–2 done; `proposal.ts`,
+  `adapter.ts`, `index.ts`, ADR 0004, and the other Slice 3–4 items not started).
+  §3.1 marks the `GoogleMerchantAdapter` interface as planned for Slice 3.
+- `sizeTypes` corrected during the final review: the discovery schema defines
+  its items as the uppercase `SizeType` enum (`REGULAR`, `PETITE`, `PLUS`,
+  `TALL`, `MATERNITY`; also `BIG`), so the mapper emits uppercase values, not
+  lowercase strings.
+- §4.1 and §13 record that `BIG` and `LIMITED_AVAILABILITY` are intentionally
+  not mapped, and which length limits come from the product data specification
+  rather than the discovery schema.
+- The §5 code list and other plan text were not changed.
