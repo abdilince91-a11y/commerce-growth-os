@@ -1,15 +1,19 @@
 # Google Merchant Adapter — v0.1 Implementation Plan
 
-Status: DRAFT (revision 5) — needs review before any implementation, commit, or push.
-Branch: `feat/google-merchant-adapter`
+Status: DRAFT (revision 6) — Slice 0 is implemented (uncommitted, on
+`feat/canonical-variant-schema`); Slices 1–4 and the live phases still need
+review and a separate go-ahead before any implementation.
+Branch: written on `feat/google-merchant-adapter` (merged); Slice 0 step 2
+is on `feat/canonical-variant-schema`.
 Milestone: step 4 of `docs/plans/v0.1.md` §6.
 Written: 2026-09-19 · Revised: 2026-09-20 (slice order with a new Slice 0,
-confirmed live-phase facts, then the Slice 0 architectural decisions
-recorded in ADR 0003 (Proposed); see §14)
+confirmed live-phase facts, the Slice 0 decisions recorded in ADR 0003,
+and ADR 0003's acceptance with Slice 0 step 2; see §14)
 
-Scope of this document: it is documentation only. No schema, migration,
-transport, adapter code, or live-account work is implemented by it or by
-the commit that contains it.
+Scope of this document: it describes the plan. As of revision 6, Slice 0
+(ADR 0003 accepted; the additive Prisma schema and canonical Zod schemas)
+is implemented. **Not implemented:** any migration, Merchant mapper, Google
+client, transport, proposal execution, OAuth, or live-account work.
 
 Implementation order (details in §11):
 Slice 0 canonical Product/Variant ADR and schema decision → Slice 1 pure
@@ -64,15 +68,15 @@ Inspected: `CLAUDE.md`, `docs/plans/v0.1.md`, `docs/decisions/0000–0002`,
 
 | # | Finding | Consequence for this plan |
 |---|---|---|
-| F1 | **There is no `Variant` model.** Canonical `Product` has a unique `sku`, free-form `attributes`, and no `itemGroupId`. | **Decided (Q1, ADR 0003 Proposed):** a first-class canonical `Variant` model (Option C). `offerId = Variant.sku`; `itemGroupId` is derived from `Product.id`. |
+| F1 | **There is no `Variant` model.** Canonical `Product` has a unique `sku`, free-form `attributes`, and no `itemGroupId`. | **Decided and implemented (Q1, ADR 0003 Accepted):** a first-class canonical `Variant` model (Option C). `offerId = Variant.sku`; `itemGroupId` is `Product.id` verbatim and is not stored. |
 | F2 | Canonical `Product` has **no `link`, `condition`, `contentLanguage`, `feedLabel`, or `availabilityDate`**. Merchant requires a landing-page `link`; preorder/backorder need an availability date. | **Decided (Q1):** `condition` is canonical `Product` data; `availability` and `availabilityDate` are canonical `Variant` data; `contentLanguage`/`feedLabel` are Merchant channel configuration; landing-page URLs are storefront-derived context. |
-| F3 | ADR 0001 says price is "decimal in the Zod/API layer", but `ProductInputSchema.priceAmount` is `z.number().int()` — i.e. **integer minor units**, matching Prisma `Int`. | **Decided (Q2):** `priceAmount` is integer minor units. The corrected wording is written in ADR 0003 and is applied to ADR 0001 when ADR 0003 is accepted; ADR 0001 is **not** edited in Slice 0 step 1. |
-| F4 | `ProductInputSchema` validates `images` with `z.string().url()`. Verified locally: it **accepts** `javascript:alert(1)`, `data:` URIs, `ftp:`, and URLs with embedded credentials. | The adapter must re-validate scheme (`http`/`https` only), reject credentials, and strip nothing silently. Untrusted-input rule in `CLAUDE.md`. |
-| F5 | Prisma returns `null` for nullable columns, but `z.string().min(1).optional()` **rejects `null`** (verified). A raw DB row will fail `ProductInputSchema`. | **Decided (Q3):** `null → undefined` normalization stays at the **adapter boundary** (`fromProductRow()` / `fromVariantRow()`); the canonical Zod schemas are not loosened to accept `null`. |
-| F6 | `priceAmount` allows `0` and unsafe integers (verified: `2**60` passes `.int()`). Merchant rejects zero prices except narrow cases. | Adapter validates `Number.isSafeInteger` and rejects zero as a structured error. ADR 0003 also proposes tightening the canonical bounds. |
+| F3 | ADR 0001 says price is "decimal in the Zod/API layer", but `ProductInputSchema.priceAmount` is `z.number().int()` — i.e. **integer minor units**, matching Prisma `Int`. | **Decided (Q2):** `priceAmount` is integer minor units. The correction is made through ADR 0003 (accepted); ADR 0001's body is unchanged and carries only a minimal cross-reference note. |
+| F4 | `ProductInputSchema` validates `images` with `z.string().url()`. Verified locally: it **accepts** `javascript:alert(1)`, `data:` URIs, `ftp:`, and URLs with embedded credentials. | The canonical schema now rejects these (`HttpUrlSchema`, Slice 0 step 2). The adapter still re-validates scheme (`http`/`https` only) and rejects credentials, because raw rows can bypass Zod, and strips nothing silently. Untrusted-input rule in `CLAUDE.md`. |
+| F5 | Prisma returns `null` for nullable columns, but `z.string().min(1).optional()` **rejects `null`** (verified). A raw DB row will fail `ProductInputSchema`. | **Decided and implemented (Q3):** `null → undefined` normalization happens at the named **persistence boundary**, `src/lib/schema/persistence-boundary.ts` (`parseProductRow` / `parseVariantRow`), which adapters read through; the canonical Zod schemas are not loosened to accept `null`. |
+| F6 | `priceAmount` allows `0` and unsafe integers (verified: `2**60` passes `.int()`). Merchant rejects zero prices except narrow cases. | The canonical schema now requires a positive integer within the 32-bit range (Slice 0 step 2). The adapter still validates `Number.isSafeInteger` and rejects zero as a structured error, because raw rows can bypass Zod. |
 | F7 | `proposals.ts` has **no `createProposal`**; it only approves, rejects, and flips to applied. `applyProposal` performs no side effect beyond the status change. | **Decided (Q4):** `createProposal` is **not** added in this milestone. The adapter returns a validated `ProposalCreateInput` only. |
 | F8 | `Proposal.before/after` are required `Json`; Prisma cannot store a bare JS `null` there. | `before` uses an explicit sentinel object, never `null` (§8). |
-| F9 | ADR 0001 requires at least one of `gtin`/`mpn` via a Zod refinement, not a DB constraint. Raw rows can bypass it. | Adapter re-validates identifiers; it never assumes the input was Zod-parsed. |
+| F9 | ADR 0001 required at least one of `gtin`/`mpn` via a Zod refinement, not a DB constraint; ADR 0003 moves that rule to `Variant`. Raw rows can bypass it. | Adapter re-validates identifiers; it never assumes the input was Zod-parsed. |
 
 ## 3. Proposed architecture
 
@@ -82,7 +86,7 @@ so results are reproducible and trivially testable.
 ```
 canonical Product + Variant rows + channel config + storefront link
         │
-        ▼  fromProductRow()/fromVariantRow()   null → undefined, Zod-validate
+        ▼  parseProductRow()/parseVariantRow()   persistence boundary: null → undefined, Zod-validate
         ▼  validate*()             structured issues, never throws for bad data
         ▼  mapProductToMerchantInput()
         ▼
@@ -167,12 +171,13 @@ so that large value is a pure-function test case, not a storable price.
 | `offerId` | `Variant.sku` | ≤ 50 chars; must not contain `~`, `/`, `%`, whitespace or control chars (§4.3) |
 | `contentLanguage` | Merchant channel configuration | 2-letter lowercase ISO 639-1; not product data |
 | `feedLabel` | Merchant channel configuration | uppercase letters/digits/`-`/`_`; must not contain `~`; not product data |
-| `title` | `Product.title` | NFC-normalized, trimmed; ≤ 150 **code points**; error (never silent truncation) if longer |
+| `title` | derived variant title: `Product.title` plus the variant's distinguishing color/size (ADR 0003 D21; `Product.title` itself stays canonical, and the derivation belongs to the future mapper) | NFC-normalized, trimmed; ≤ 150 **code points**; error (never silent truncation) if longer |
 | `description` | `Product.description` | NFC-normalized, trimmed; ≤ 5000 code points; same rule |
 | `link` | storefront-derived context | a finished absolute URL supplied by a storefront link resolver (built from `Product.handle` and the variant); `http`/`https` only; no embedded credentials; error otherwise (F4) |
 | `imageLink` | `Variant.imageUrl`, else `Product.images[0]` | same URL rules as `link` |
 | `additionalImageLinks` | remaining `Product.images` | same URL rules; order preserved; capped at the documented maximum, error beyond it |
-| `price.amountMicros` | `Variant.priceAmount`, `Variant.currency` | exact BigInt conversion (§4.4); zero rejected; emitted as a JSON string |
+| `price` / `salePrice` | `Variant.priceAmount`, `Variant.compareAtPriceAmount` | `compareAtPriceAmount` is the regular/original price and is valid only when strictly greater than `priceAmount` (ADR 0003 D19). When present, `price` is the compare-at value and `salePrice` is `priceAmount`; otherwise `price` is `priceAmount` and there is no `salePrice`. An invalid comparison is an error |
+| `price.amountMicros` (and `salePrice`) | `Variant.priceAmount`, `Variant.currency` | exact BigInt conversion (§4.4) of each amount; zero rejected; emitted as a JSON string |
 | `price.currencyCode` | `Variant.currency` | canonical value is an uppercase three-letter code (`VarChar(3)`, not an enum); **at this adapter's boundary exactly `EUR` or `TRY` are supported** (ADR 0003 D7); a malformed code → `invalid_currency`, a well-formed unsupported code → `unsupported_currency` |
 | `availability` | `Variant.availability` | explicit mapping table, canonical lowercase → Merchant uppercase: `in_stock→IN_STOCK`, `out_of_stock→OUT_OF_STOCK`, `preorder→PREORDER`, `backorder→BACKORDER` (the existing `Availability` enum, unchanged) |
 | `availabilityDate` | `Variant.availabilityDate` | ISO 8601; nullable in the canonical model. Google Merchant requires it for PREORDER/BACKORDER, so `preorder`/`backorder` offers are mapped **only when it exists**, otherwise the offer is not mapped and returns `missing_availability_date` (ADR 0003 D13). It is a channel requirement, not a canonical rule |
@@ -196,7 +201,7 @@ change case.
 ### 4.2 Products, variants, and offer input (decided: first-class `Variant`)
 
 Canonical data is a `Product` (the family) with one or more `Variant`s
-(purchasable SKUs), per ADR 0003 (Proposed). One **offer** is one
+(purchasable SKUs), per ADR 0003 (Accepted). One **offer** is one
 `Variant` together with its parent `Product`:
 
 ```ts
@@ -228,8 +233,13 @@ because storefront slugs can change. Existing ids are unchanged
 
 - duplicate `offerId` (`Variant.sku`) within a `(contentLanguage, feedLabel)`
   scope → error
-- two variants of one product with the same `color` and `size` → warning
-  (`variant_not_distinguishable`)
+- two variants of one product with the same `color` and `size` (compared
+  ignoring case, surrounding spaces, and Unicode composition; a variant with
+  neither is exempt) → error `variant_not_distinguishable`. The canonical
+  `ProductWithVariantsInputSchema` already rejects this (ADR 0003 D18); the
+  adapter re-checks because raw rows can bypass Zod
+- variants of one product using different currencies → error
+  `mixed_currencies` (also rejected by the canonical schema)
 - output sorted by `productInputId` so results never depend on input order
 
 ### 4.3 Deterministic identifiers
@@ -332,7 +342,7 @@ Codes (initial set): `missing_required_field`, `missing_identifier`,
 `description_too_long`, `too_many_images`, `invalid_offer_id`,
 `invalid_content_language`, `invalid_feed_label`,
 `missing_availability_date`, `duplicate_offer_id`,
-`variant_not_distinguishable`.
+`variant_not_distinguishable`, `mixed_currencies`.
 
 All issues for one product are collected in a single pass (the caller
 sees every problem, not just the first).
@@ -346,7 +356,7 @@ modules. Tests live next to the code and match the existing
 | Group | Cases |
 |---|---|
 | Valid mapping | full product → exact expected payload (snapshot-free, explicit `toEqual`) |
-| Multiple variants | 3 variants of one product → one derived `itemGroupId`, distinct `offerId`s; a single-variant product still gets `itemGroupId`; `itemGroupId` unchanged when `Product.handle` changes; sorted output; duplicate `offerId`; same-color-and-size variants warning |
+| Multiple variants | 3 variants of one product → one derived `itemGroupId`, distinct `offerId`s; a single-variant product still gets `itemGroupId`; `itemGroupId` unchanged when `Product.handle` changes; sorted output; duplicate `offerId`; same-color-and-size variants → `variant_not_distinguishable` error; mixed currencies in one product → `mixed_currencies` error |
 | Missing identifiers | neither gtin nor mpn on the variant; mpn without brand; bad GTIN checksum; wrong length; coupon prefix; spaces/dashes normalized |
 | Currency / price | `EUR` and `TRY` accepted; well-formed unsupported codes (`USD`, `JPY`, `KWD`) → `unsupported_currency`; malformed (lowercase, wrong length, empty) → `invalid_currency`; zero; unsafe integer; decimal-string edge cases |
 | Availability / condition | all four availability values; all three conditions; default condition `new`; `preorder`/`backorder` **with** `availabilityDate` mapped, **without** it not mapped (`missing_availability_date`) |
@@ -488,7 +498,7 @@ New:
 
 ```
 docs/plans/google-merchant-adapter.md                 (this file)
-docs/decisions/0003-canonical-product-variant.md      (Slice 0 step 1: written, status Proposed)
+docs/decisions/0003-canonical-product-variant.md      (Slice 0: written and Accepted)
 docs/decisions/0004-google-merchant-adapter.md        (Slice 4: fixture-only boundary, v1 API, read-only-first live phase)
 src/lib/merchant/google/types.ts                      payload + input + issue types
 src/lib/merchant/google/errors.ts                     issue codes, safeIssueSummary
@@ -497,7 +507,6 @@ src/lib/merchant/google/identifiers.ts                offerId/contentLanguage/fe
 src/lib/merchant/google/gtin.ts                       normalize + GS1 checksum
 src/lib/merchant/google/text.ts                       NFC/trim, code-point length
 src/lib/merchant/google/urls.ts                       http/https-only URL validation
-src/lib/merchant/google/from-row.ts                   Prisma Product/Variant rows → inputs (null → undefined)
 src/lib/merchant/google/mapper.ts                     mapProductToMerchantInput, mapProducts
 src/lib/merchant/google/proposal.ts                   toFeedUpdateProposal
 src/lib/merchant/google/adapter.ts                    GoogleMerchantAdapter interface + factory
@@ -514,21 +523,20 @@ CHANGELOG.md             Unreleased entry
 docs/plans/v0.1.md       tick step 4
 ```
 
-Not modified in Slice 0 step 1: `docs/decisions/0001-canonical-product-schema.md`.
-Its price-wording correction is written in ADR 0003 and is applied to
-ADR 0001 in the same change that accepts ADR 0003.
+Null normalization is not a Merchant-module file: it lives in the canonical
+layer as `src/lib/schema/persistence-boundary.ts` (Slice 0 step 2), and the
+adapter reads canonical data through it.
 
 Not modified: `src/lib/proposals.ts` (Q4 decided: no `createProposal` in
 this milestone).
 
-Modified **only after ADR 0003 is accepted and a separate approval is
-given** (Slice 0 step 2): `prisma/schema.prisma` and
-`src/lib/schema/product.ts` (plus their tests), to the extent ADR 0003
-proposes. No migration file is generated or applied without a further
-explicit approval.
+Changed by Slice 0 (done, uncommitted): `prisma/schema.prisma` (additive
+expand-phase schema), the canonical Zod schemas and their tests under
+`src/lib/schema/`, ADR 0003 (accepted), and a minimal cross-reference note at
+the top of ADR 0001. **No migration file was created or applied.** Creating
+one is a further explicit approval.
 
 Never modified by this plan: any `.env*` file, `.github/workflows/ci.yml`.
-Nothing in this plan revision touches Prisma or Zod schemas.
 
 ## 10. Dependencies
 
@@ -553,55 +561,57 @@ Approval for one slice does not carry to the next.
 | Future phase | Authenticated read-only Merchant connection | live, read-only |
 | Later phase | Human-approved write transport | live, writes |
 
-### Slice 0 — Canonical Product/Variant ADR and schema decision
+### Slice 0 — Canonical Product/Variant ADR and schema decision (done, uncommitted)
 
 Why first: the mapper's inputs depend on what the canonical record holds
 (F1, F2), and a schema change is the most expensive thing to redo.
 
-**Step 1 — written:** `docs/decisions/0003-canonical-product-variant.md`,
-status **Proposed**. It records these decisions (the earlier defaults
-are replaced):
+**Step 1 — done:** `docs/decisions/0003-canonical-product-variant.md` was
+written and, on 2026-09-20, **Accepted**, with an explicit outcome for every
+proposal (P1–P13) and open question (OQ1–OQ7).
+
+**Step 2 — done (on `feat/canonical-variant-schema`, not committed):** the
+additive expand-phase Prisma schema and the canonical Zod schemas with focused
+unit tests. Nothing else: no migration, Merchant mapper, Google client,
+transport, proposal execution, OAuth, or live-account work, and no database was
+connected to (`prisma format`, `validate`, and `generate` ran with a
+process-local dummy `DATABASE_URL` only).
+
+The accepted decisions (the earlier defaults are replaced):
 
 | Decision | Outcome |
 |---|---|
-| Variant representation (Q1, F1) | **Option C — a first-class canonical `Variant` model.** ONOE is an apparel business; size, color, SKU, price, inventory, and product-family relationships are domain data, not Google-specific adapter context. |
-| `Product` owns | `id`, `handle`, `title`, `description`, `brand`, `productType`, `material`, `condition` (default `new`), shared `images`, `tags`, lifecycle `status`, timestamps |
-| `Variant` owns | `id`, `productId`, `sku` (unique), `gtin?`, `mpn?`, `priceAmount` (integer minor units), `compareAtPriceAmount?`, `currency`, `inventoryQuantity`, `availability`, `availabilityDate?`, `color?`, `size?`, variant image URL?, lifecycle `status`, timestamps |
-| Merchant identity (Q5) | `offerId = Variant.sku`; `itemGroupId` derived deterministically from the stable `Product.id` **at mapping time and not stored**; `contentLanguage`/`feedLabel` are channel configuration; landing-page URLs are storefront-derived context; `condition` is `Product` data; `availability`/`availabilityDate` are `Variant` data |
-| Ids | **Preserved.** `Product.id` and `Proposal.id` stay `cuid()` and no existing id changes; **no UUID conversion is proposed**. `Variant.id` is `@default(cuid())`. `Product.id` is the stable source of the derived `itemGroupId`; `Variant.sku` (unique) is the source of `offerId` |
-| Price wording (Q2) | `priceAmount` is integer minor units; the ADR 0001 correction is written in ADR 0003 and applied when it is accepted |
-| Currency storage (Q7) | canonical `currency String @db.VarChar(3)`, Zod `^[A-Z]{3}$`, **no** Prisma enum; the Merchant adapter v0.1 supports exactly **EUR and TRY** at its boundary |
-| Enum convention | **lowercase, matching the repository.** New canonical enums `draft`/`active`/`archived` and `new`/`used`/`refurbished`; the existing `Availability` (`in_stock`, `out_of_stock`, `preorder`, `backorder`) is reused **unchanged**, and no existing enum is changed for style. The adapter maps canonical lowercase values to Google's uppercase API enums in explicit tables |
-| Null handling (Q3) | `null → undefined` at the adapter boundary; canonical Zod is not loosened |
-| Existing `Product` data | **conservative non-destructive backfill, required even if the project is believed to be empty** (emptiness is unverified): one default `Variant` per `Product`, copy the offer-level values, verify, and only then consider removing the duplicated `Product` columns in a later, separately approved migration. **No destructive column removal is authorized in Slice 0** |
+| Variant representation (Q1, F1) | **Option C — a first-class canonical `Variant` model.** ONOE is an apparel business; size, color, SKU, price, inventory, and product-family relationships are domain data, not Google-specific adapter context |
+| `Product` owns | `id`, `handle`, `title`, `description`, `brand`, `productType`, `material`, `condition` (default `new`), shared `images`, `tags`, `attributes` (channel-neutral escape hatch), lifecycle `status`, typed apparel metadata (`gender`, `ageGroup`, `pattern`, `sizeSystem`, `sizeTypes`), timestamps |
+| `Variant` owns | `id`, `productId`, `sku` (unique), `gtin?`, `mpn?`, `priceAmount`, `compareAtPriceAmount?`, `currency`, `inventoryQuantity?`, `availability`, `availabilityDate?`, `color?`, `size?`, variant image URL?, lifecycle `status`, timestamps |
+| Merchant identity (Q5) | `offerId = Variant.sku`; `itemGroupId` is `Product.id` verbatim and **not stored**; `contentLanguage`/`feedLabel` are channel configuration; storefront URLs remain adapter context (no Shopify-specific ids or URL rules); `condition` is `Product` data; `availability`/`availabilityDate` are `Variant` data |
+| Ids | **Preserved.** `Product.id` and `Proposal.id` stay `cuid()`; no UUID conversion; `Variant.id` is `@default(cuid())` |
+| Enum convention | **lowercase, matching the repository.** New enums are lowercase and channel-neutral; `Availability` and `Proposal*` are unchanged. The adapter maps canonical lowercase values to Google's uppercase enums in explicit tables |
+| Prices (Q2) | integer minor units for v0.1; positive, within the 32-bit `Int` range; correction to ADR 0001 made through ADR 0003 |
+| `compareAtPriceAmount` | the regular/original price, valid only when strictly greater than `priceAmount`; the mapper may later emit `price` plus `salePrice` |
+| Currency (Q7) | canonical `currency String @db.VarChar(3)`, exactly three uppercase ASCII letters, **no** Prisma enum; the Merchant adapter v0.1 supports exactly **EUR and TRY** at its boundary |
+| Inventory | `inventoryQuantity` is nullable: `null` means unknown, `0` means known zero; there is no default |
+| GTIN | unique when present; 8/12/13/14 digits with a valid GS1 check digit; **never zero-padded or rewritten** |
+| Family rules | unique `sku` and non-null `gtin`; duplicate non-null color/size combinations rejected by Zod (no database unique); one currency per product; an active `Product` needs at least one variant, drafts may have none |
+| Null handling (Q3) | `null → undefined` at the persistence boundary (`src/lib/schema/persistence-boundary.ts`); canonical Zod is not loosened |
+| Existing `Product` data | the legacy commerce columns are kept as nullable compatibility columns (additive expand phase); **conservative non-destructive backfill required** for the later migration, one default `Variant` per `Product`, verified before anything is removed. **No destructive column removal is authorized.** Database contents are unknown (ADR 0003 OQ6), so no claim is made about rows |
+| Titles | `Product.title` stays canonical; the future mapper derives the variant title |
 | `createProposal` (Q4) | not added in this milestone |
 | Proposal granularity (Q6) | per product/variant offer, not batches |
-| Preorder/backorder (Q8) | mapped only when the required `availabilityDate` exists (a channel requirement; nullable canonically) |
-| `amountMicros` | JSON **string**, exact BigInt conversion |
+| Preorder/backorder (Q8) | mapped only when `availabilityDate` exists (a channel requirement; nullable canonically) |
+| `amountMicros` | JSON **string**, exact BigInt conversion (future mapper) |
 
-The ADR also documents the database constraints (positive `priceAmount`
-within `Int` range, `compareAtPriceAmount >= priceAmount`, non-negative
-`inventoryQuantity`, nullable-GTIN uniqueness behavior, the Product 1:N
-Variant relation with `ON DELETE RESTRICT` and no hard deletes) without
-implementing any of them. It lists concrete proposals (P1–P13) and open
-questions (OQ1–OQ7) that the owner has **not** decided; they need review
-before acceptance. It proposes the Prisma models (validated offline as
-scratch files), Zod changes, and the expand/backfill/verify/contract
-migration strategy. This step edited **no** Prisma file, Zod file, or
-migration, connected to no database, and left ADR 0001 unedited.
+**Not part of Slice 0:** the first migration. `prisma/schema.prisma` is not
+migratable as-is (required columns such as `handle` and `productType` have no
+defaults), so the migration must be hand-written to add, backfill, verify,
+and only then enforce. It is authored, if at all, as a further approval, is
+verified against a copy of real data, and is never applied without an explicit
+go-ahead.
 
-**Step 2 — after ADR 0003 is accepted, and only with a separate
-approval:** apply the Prisma and Zod changes with tests, validated
-offline. `prisma validate` and `prisma generate` need `DATABASE_URL` only
-as a **process-only dummy value** (no `.env` file, no connection). There
-is no `prisma/migrations` directory in the repository, and no database was
-inspected, so whether any holds `Product` rows is unknown (ADR 0003
-OQ6). The first migration is
-authored later, from the approved schema, as a further approval, follows
-the non-destructive backfill above, and is never applied here.
-
-Exit: ADR 0003 accepted; schema/Zod/tests updated and green. Slices 1–3
-then proceed against `MerchantOfferInput` (§4.2).
+Exit (met): ADR 0003 accepted; schema and Zod updated; `prisma format`,
+`validate`, and `generate`, `npm run typecheck`, `npm run lint`, `npm test`,
+`npm run build`, and lint after build pass. Slices 1–3 proceed against
+`MerchantOfferInput` (§4.2) when separately approved.
 
 ### Slice 1 — Pure validation and mapping utilities
 
@@ -611,9 +621,10 @@ NFC/code-point handling, GTIN checksum, and http/https-only URL checks.
 
 ### Slice 2 — Fixture-based Merchant payload mapper
 
-`errors`, `types`, `from-row` (`fromProductRow`/`fromVariantRow`, the
-adapter-boundary `null → undefined` step), `mapper`, and the typed
-fixtures. Covers valid mapping, multiple variants, missing
+`errors`, `types`, `mapper`, and the typed fixtures. Null normalization
+is not part of this slice: it already exists as the canonical persistence
+boundary (`parseProductRow`/`parseVariantRow`), which the mapper's inputs
+come through. Covers valid mapping, multiple variants, missing
 identifiers, currency/price errors, availability and condition mappings,
 Unicode, and determinism (§6). Before the payload types are finalized,
 the "Not yet verified" field-name items in §13 are checked against
@@ -682,42 +693,44 @@ Every code slice (0 step 2, 1, 2, 3) ends with `npm run typecheck`,
 
 ## 13. Open questions
 
-### A. Decided (recorded in ADR 0003, status Proposed)
+### A. Decided (recorded in ADR 0003, status Accepted)
 
 | # | Question | Decision |
 |---|---|---|
-| Q1 | Variant representation and where `link`, `condition`, `availabilityDate`, and `itemGroupId` live | **Decided:** first-class `Variant` model (Option C). `condition` on `Product`; `availability`/`availabilityDate` on `Variant`; `itemGroupId` derived from `Product.id`; landing-page URLs are storefront-derived context; `contentLanguage`/`feedLabel` are channel configuration. |
-| Q2 | ADR 0001 price wording | **Decided:** `priceAmount` is integer minor units. The corrected wording is in ADR 0003 and is applied to ADR 0001 when ADR 0003 is accepted. |
-| Q3 | Where `null → undefined` happens | **Decided:** at the adapter boundary; canonical Zod is not loosened. |
+| Q1 | Variant representation and where `link`, `condition`, `availabilityDate`, and `itemGroupId` live | **Decided:** first-class `Variant` model (Option C). `condition` on `Product`; `availability`/`availabilityDate` on `Variant`; `itemGroupId` is `Product.id` verbatim and not stored; landing-page URLs are storefront-derived adapter context; `contentLanguage`/`feedLabel` are channel configuration. |
+| Q2 | ADR 0001 price wording | **Decided:** `priceAmount` is integer minor units. The correction is made through ADR 0003 (accepted); ADR 0001 carries only a minimal cross-reference note. |
+| Q3 | Where `null → undefined` happens | **Decided and implemented:** at the named persistence boundary (`src/lib/schema/persistence-boundary.ts`), which adapters read through; the canonical Zod schemas are not loosened. |
 | Q4 | `createProposal` | **Decided:** not added in this milestone. |
 | Q5 | `offerId` source | **Decided:** `Variant.sku`. |
 | Q6 | Proposal granularity | **Decided:** per product/variant offer, not batches. |
 | Q7 | Supported currencies | **Decided:** the Merchant adapter v0.1 supports exactly `EUR` and `TRY` at its boundary. The canonical `currency` is `String @db.VarChar(3)` (Zod `^[A-Z]{3}$`), not a Prisma enum, so adding a currency never needs a migration. |
 | Q8 | Preorder/backorder | **Decided:** mapped only when the required `availabilityDate` exists. |
 
-### B. Open, carried by ADR 0003 (need review before it is accepted)
+### B. ADR 0003 proposals and open questions: resolved
 
-Not decided by the product owner; each has a stated default in the ADR.
+ADR 0003 records the explicit outcome of every proposal (P1–P13) and open
+question (OQ1–OQ7). Summary of what matters to this plan:
 
-- **P1–P13:** concrete proposals such as `itemGroupId = Product.id`
-  verbatim, keeping `Product.attributes`, backfilled records starting
-  `draft`, unique `gtin`, advisory-only inventory/availability checks,
-  `CHECK` constraints added `NOT VALID` then validated, and the
-  image-selection rule.
-- **OQ1:** apparel attributes Merchant may require (gender, age group,
-  size system/type, pattern) that the ADR does not model.
-- **OQ2:** whether `compareAtPriceAmount` should map to a Merchant sale
-  price (default: ignored in v0.1).
-- **OQ3:** whether variant offers use a composed title (default: no).
-- **OQ4:** whether one product's variants may use different currencies.
-- **OQ5:** who owns the storefront link resolver, and the ONOE URL and
-  variant-parameter format.
-- **OQ6:** whether any developer, staging, or production database
-  already holds `Product` rows. Unknown, since none was inspected; a
-  human must answer before a migration is authored, though the
-  conservative backfill is required either way.
-- **OQ7:** whether GTINs are normalized to a canonical length so
-  padding-equivalent values collide on the unique index.
+- **Accepted:** P1–P10 and P13 (P6 and P7 with corrections, below).
+- **Superseded:** P11 (duplicate color/size is now rejected by Zod, still
+  with no database unique) and P12 (`Product.title` stays canonical; the
+  future mapper derives the variant title).
+- **Inventory** is nullable: `NULL` means unknown, `0` means known zero
+  (correcting P7's earlier "0 for unknown").
+- **GTIN** is unique when present, validated (8/12/13/14 digits, GS1 check
+  digit), and never padded or rewritten (P6, OQ7).
+- **OQ1–OQ5 resolved:** typed apparel metadata; `compareAtPriceAmount` is the
+  regular price only when greater, so the mapper may emit `price` plus
+  `salePrice`; variant title derived by the future mapper; one currency per
+  product; storefront URLs stay adapter context.
+- **OQ6 unresolved by design:** whether any database holds `Product` rows is
+  unknown and no claim is made; a human must verify it before a migration is
+  authored, and the conservative backfill applies either way.
+
+Still open (not blocking): whether `gender`, `ageGroup`, `color`, and `size`
+become required for active products after migration; whether the duplicate
+checks should relax for archived variants; and the size vocabularies. See
+ADR 0003 "Remaining decisions".
 
 ### C. Live-phase questions (do not block Slices 0–4)
 
@@ -749,7 +762,9 @@ knowledge and need a check against the reference:
 - `feedLabel` and `contentLanguage` constraints
 - escaping rules for an `offerId` containing reserved characters
 - whether MPN strictly requires brand
-- Merchant's apparel-specific required attributes (see OQ1)
+- whether the typed apparel metadata added in ADR 0003 (`gender`, `ageGroup`,
+  `pattern`, `sizeSystem`, `sizeTypes`, `color`, `size`) fully covers
+  Merchant's apparel requirements, and how each maps to Merchant's values
 
 (`amountMicros` as a JSON string was on this list and is now a confirmed
 decision, ADR 0003 D11.)
@@ -811,10 +826,12 @@ ADR 0004.
 - **Constraints** documented in ADR 0003 (positive `priceAmount` within
   `Int` range, `compareAtPriceAmount >= priceAmount`, non-negative
   inventory, channel-driven `availabilityDate`, nullable-GTIN uniqueness,
-  1:N relation with `ON DELETE RESTRICT`); nothing implemented. *(Still in
-  force.)*
+  1:N relation with `ON DELETE RESTRICT`); nothing implemented. *(Superseded
+  in revision 6: the comparison is now strictly greater, inventory is
+  nullable, and the Zod rules are implemented.)*
 - **ADR 0001 is not edited** in Slice 0 step 1: an earlier edit was
-  reverted so only ADR 0003 and this plan change. *(Still in force.)*
+  reverted so only ADR 0003 and this plan change. *(Superseded in revision 6:
+  ADR 0001 gains a minimal cross-reference note; its body is unchanged.)*
 - Superseded in revision 5: this revision proposed UUID ids and UPPERCASE
   enum members. Both were dropped; see below.
 
@@ -839,5 +856,29 @@ ADR 0004.
   (emptiness is unverified), and stays non-destructive (§11; ADR 0003
   D10).
 - ADR 0003 proposals renumbered P1–P13 and open questions OQ1–OQ7.
-- Still Proposed and unimplemented: no adapter code, Prisma edit, Zod
-  edit, migration, database connection, or credential.
+- *(Superseded in revision 6: at this point ADR 0003 was still Proposed and
+  nothing was implemented.)*
+
+**Revision 6 (2026-09-20, ADR 0003 accepted; Slice 0 step 2)**
+
+- ADR 0003 **Accepted**, with every proposal (P1–P13) and open question
+  (OQ1–OQ7) resolved explicitly (§13.B). P1–P10 and P13 accepted; P11 and P12
+  superseded.
+- **Slice 0 step 2 implemented** (uncommitted, `feat/canonical-variant-schema`):
+  the additive expand-phase `prisma/schema.prisma` and the canonical Zod
+  schemas with focused tests. No migration, mapper, client, transport,
+  proposal execution, OAuth, or live-account work; no database was connected
+  to.
+- Decisions applied to the plan: `inventoryQuantity` nullable (`NULL` unknown,
+  `0` known zero); GTIN unique when present, checksum-validated, never padded
+  or rewritten; duplicate color/size rejected by Zod with no database unique;
+  one currency per product; `compareAtPriceAmount` valid only when strictly
+  greater (mapper may emit `price` plus `salePrice`); active product needs at
+  least one variant; `Product.title` stays canonical with a derived variant
+  title in the future mapper; typed channel-neutral apparel metadata;
+  null normalization moved to the canonical persistence boundary.
+- §2 (F1, F3–F6, F9), §3, §4.1, §4.2, §5, §6, §9, §11 (Slice 0, Slice 2), and
+  §13 updated; new adapter error codes `variant_not_distinguishable` (now an
+  error) and `mixed_currencies`.
+- ADR 0001's body is unchanged; it gains only a minimal cross-reference note.
+- Database contents remain unknown and no claim is made about rows.

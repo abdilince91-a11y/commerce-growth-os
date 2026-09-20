@@ -3,6 +3,11 @@
 Status: Accepted
 Date: 2026-08-29
 
+> Note (2026-09-20): partly amended by [ADR 0003](0003-canonical-product-variant.md).
+> `Product` is split into `Product` and `Variant`, and the `priceAmount` row
+> below is wrong: prices were always integer minor units, not decimals. ADR
+> 0003 governs where the two differ. The body of this ADR is unchanged.
+
 ## Context
 
 Every module in the v0.1 architecture (search intelligence, metadata
