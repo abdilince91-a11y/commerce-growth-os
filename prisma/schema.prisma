@@ -1,7 +1,18 @@
 // Canonical schema for Commerce Growth OS v0.1.
-// See docs/decisions/0001-canonical-product-schema.md and
-// docs/decisions/0002-human-approval-gate.md for the rationale behind
-// these shapes before changing them.
+//
+// See docs/decisions/0001-canonical-product-schema.md,
+// docs/decisions/0002-human-approval-gate.md and
+// docs/decisions/0003-canonical-product-variant.md before changing these shapes.
+//
+// EXPAND PHASE (ADR 0003): Product is the family; Variant is the purchasable
+// unit. The legacy Product commerce columns are kept as nullable, deprecated
+// compatibility columns until a later, separately approved contract migration.
+// No migration exists yet; the database contents are unknown, so the migration
+// must be written by hand as add -> backfill -> verify (ADR 0003).
+//
+// CHECK constraints (price > 0, compare-at > price, inventory >= 0, currency
+// shape, sku shape) cannot be expressed here. They are specified in ADR 0003
+// and added to the hand-written migration as NOT VALID, then VALIDATEd.
 
 generator client {
   provider = "prisma-client-js"
@@ -12,6 +23,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Unchanged existing enum. Mapping to external API spellings happens in adapters.
 enum Availability {
   in_stock
   out_of_stock
@@ -19,25 +31,116 @@ enum Availability {
   backorder
 }
 
-model Product {
-  id                 String       @id @default(cuid())
-  sku                String       @unique
-  title              String
-  description        String
-  brand              String?
-  gtin               String?
-  mpn                String?
-  category           String
-  priceAmount        Int // minor units (e.g. cents)
-  priceCurrency      String
-  availability       Availability
-  images             String[]
-  attributes         Json         @default("{}")
-  sourceUpdatedAt    DateTime
-  canonicalUpdatedAt DateTime     @updatedAt
-  createdAt          DateTime     @default(now())
+enum ProductCondition {
+  new
+  used
+  refurbished
+}
 
+enum LifecycleStatus {
+  draft
+  active
+  archived
+}
+
+// Channel-neutral apparel metadata. Values are lowercase and deliberately do
+// not copy any advertising platform's spelling.
+enum Gender {
+  male
+  female
+  unisex
+}
+
+enum AgeGroup {
+  newborn
+  infant
+  toddler
+  child
+  adult
+}
+
+enum SizeType {
+  regular
+  petite
+  plus
+  tall
+  maternity
+}
+
+model Product {
+  id          String           @id @default(cuid())
+  handle      String           @unique
+  title       String
+  description String
+  brand       String?
+  productType String
+  material    String?
+  condition   ProductCondition @default(new)
+  images      String[]
+  tags        String[]         @default([])
+  // Channel-neutral escape hatch for product-level attributes that are not
+  // modeled as columns. Not a place for advertising-platform keys.
+  attributes  Json             @default("{}")
+  status      LifecycleStatus  @default(draft)
+
+  // Apparel metadata. gender and ageGroup are nullable only during migration.
+  gender     Gender?
+  ageGroup   AgeGroup?
+  pattern    String?    @db.VarChar(100)
+  sizeSystem String?    @db.VarChar(8)
+  sizeTypes  SizeType[] @default([])
+
+  sourceUpdatedAt    DateTime
+  canonicalUpdatedAt DateTime  @updatedAt
+  createdAt          DateTime  @default(now())
+  variants           Variant[]
+
+  // LEGACY compatibility columns (deprecated, nullable). Copied to a default
+  // Variant by the backfill; removed only by a later approved migration.
+  sku           String?       @unique
+  gtin          String?
+  mpn           String?
+  priceAmount   Int?
+  priceCurrency String?
+  availability  Availability?
+  category      String?
+
+  @@index([status])
+  @@index([productType])
   @@index([category])
+}
+
+model Variant {
+  id                   String          @id @default(cuid())
+  productId            String
+  product              Product         @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sku                  String          @unique
+  // Nullable and unique when present (PostgreSQL treats NULLs as distinct).
+  // Stored exactly as supplied: never zero-padded or otherwise rewritten.
+  gtin                 String?         @unique
+  mpn                  String?
+  // Integer minor units (e.g. cents). A Prisma Int is a 32-bit INTEGER.
+  priceAmount          Int
+  // The regular/original price; only meaningful when greater than priceAmount.
+  compareAtPriceAmount Int?
+  // ISO 4217-shaped: exactly three uppercase ASCII letters. Not an enum, so a
+  // new currency never needs a migration.
+  currency             String          @db.VarChar(3)
+  // null = unknown, 0 = known zero. There is deliberately no default.
+  inventoryQuantity    Int?
+  availability         Availability
+  availabilityDate     DateTime?
+  // Nullable during migration.
+  color                String?         @db.VarChar(100)
+  size                 String?         @db.VarChar(100)
+  imageUrl             String?
+  status               LifecycleStatus @default(draft)
+  sourceUpdatedAt      DateTime
+  canonicalUpdatedAt   DateTime        @updatedAt
+  createdAt            DateTime        @default(now())
+
+  @@index([productId])
+  @@index([status])
 }
 
 enum ProposalType {
