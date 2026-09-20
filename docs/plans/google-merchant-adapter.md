@@ -1,18 +1,18 @@
 # Google Merchant Adapter — v0.1 Implementation Plan
 
-Status: DRAFT (revision 6) — Slice 0 is implemented (uncommitted, on
-`feat/canonical-variant-schema`); Slices 1–4 and the live phases still need
-review and a separate go-ahead before any implementation.
+Status: DRAFT (revision 7) — Slice 0 is merged (PR #5, merge commit
+`fcaa5fb`). The later slices and the live phases follow the order and gates
+in §11; each still needs its own go-ahead.
 Branch: written on `feat/google-merchant-adapter` (merged); Slice 0 step 2
-is on `feat/canonical-variant-schema`.
+was merged from `feat/canonical-variant-schema` (PR #5).
 Milestone: step 4 of `docs/plans/v0.1.md` §6.
 Written: 2026-09-19 · Revised: 2026-09-20 (slice order with a new Slice 0,
 confirmed live-phase facts, the Slice 0 decisions recorded in ADR 0003,
 and ADR 0003's acceptance with Slice 0 step 2; see §14)
 
-Scope of this document: it describes the plan. As of revision 6, Slice 0
+Scope of this document: it describes the plan. As of revision 7, Slice 0
 (ADR 0003 accepted; the additive Prisma schema and canonical Zod schemas)
-is implemented. **Not implemented:** any migration, Merchant mapper, Google
+is implemented and merged (PR #5, `fcaa5fb`). **Not implemented by Slice 0:** any migration, Merchant mapper, Google
 client, transport, proposal execution, OAuth, or live-account work.
 
 Implementation order (details in §11):
@@ -182,7 +182,7 @@ so that large value is a pure-function test case, not a storable price.
 | `availability` | `Variant.availability` | explicit mapping table, canonical lowercase → Merchant uppercase: `in_stock→IN_STOCK`, `out_of_stock→OUT_OF_STOCK`, `preorder→PREORDER`, `backorder→BACKORDER` (the existing `Availability` enum, unchanged) |
 | `availabilityDate` | `Variant.availabilityDate` | ISO 8601; nullable in the canonical model. Google Merchant requires it for PREORDER/BACKORDER, so `preorder`/`backorder` offers are mapped **only when it exists**, otherwise the offer is not mapped and returns `missing_availability_date` (ADR 0003 D13). It is a channel requirement, not a canonical rule |
 | `condition` | `Product.condition` (default `new`) | explicit mapping table, canonical lowercase → Merchant uppercase: `new→NEW`, `used→USED`, `refurbished→REFURBISHED` |
-| `gtins` | `Variant.gtin` | strip spaces/dashes; digits only; length 8/12/13/14; GS1 checksum (§4.5) |
+| `gtins` | `Variant.gtin` | validated **exactly as supplied** (ADR 0003 D17): 8/12/13/14 ASCII digits with a valid GS1 check digit; never trimmed, stripped of spaces or dashes, or zero-padded, so a value containing spaces or dashes is invalid; all-zero and coupon-prefix (98/99) values are rejected (§4.5) |
 | `mpn` | `Variant.mpn` | trimmed non-empty; ≤ 70 chars |
 | `brand` | `Product.brand` | trimmed non-empty; ≤ 70 chars |
 | `itemGroupId` | derived deterministically from `Product.id` | ≤ 50 chars; set on every offer of a product so it never changes when a variant is added (§4.2) |
@@ -309,9 +309,15 @@ Worked examples (become test cases):
 
 ### 4.5 GTIN and other identifiers
 
-- Merchant spec: dashes and spaces are ignored; GTIN must pass the GS1
-  checksum, must not be a coupon (98/99 prefixes), and each value is at
-  most 14 characters.
+- GTIN rules follow accepted ADR 0003 D17, which governs over Google's
+  specification wording that dashes and spaces are ignored. A GTIN is
+  validated **exactly as supplied**: 8, 12, 13, or 14 ASCII digits with a
+  valid GS1 check digit. It is never trimmed, stripped of spaces or dashes,
+  zero-padded, or otherwise rewritten, and a value with spaces or dashes is
+  invalid. All-zero values are rejected, and so are coupon prefixes (98 or 99
+  at the start of a 13-digit GTIN, or of the embedded GTIN-13 of a 14-digit
+  GTIN; not applicable to GTIN-8 or GTIN-12). The adapter's `gtin.ts` reuses
+  the canonical checksum rules.
 - Missing both `Variant.gtin` and `Variant.mpn` → `missing_identifier`
   error (the ADR 0001 rule, which ADR 0003 moves from `Product` to
   `Variant`; re-checked because raw rows can bypass Zod — F9).
@@ -357,7 +363,7 @@ modules. Tests live next to the code and match the existing
 |---|---|
 | Valid mapping | full product → exact expected payload (snapshot-free, explicit `toEqual`) |
 | Multiple variants | 3 variants of one product → one derived `itemGroupId`, distinct `offerId`s; a single-variant product still gets `itemGroupId`; `itemGroupId` unchanged when `Product.handle` changes; sorted output; duplicate `offerId`; same-color-and-size variants → `variant_not_distinguishable` error; mixed currencies in one product → `mixed_currencies` error |
-| Missing identifiers | neither gtin nor mpn on the variant; mpn without brand; bad GTIN checksum; wrong length; coupon prefix; spaces/dashes normalized |
+| Missing identifiers | neither gtin nor mpn on the variant; mpn without brand; bad GTIN checksum; wrong length; all-zero; coupon prefix; spaces/dashes rejected (never normalized); a GTIN whose leading zero was dropped is not repaired |
 | Currency / price | `EUR` and `TRY` accepted; well-formed unsupported codes (`USD`, `JPY`, `KWD`) → `unsupported_currency`; malformed (lowercase, wrong length, empty) → `invalid_currency`; zero; unsafe integer; decimal-string edge cases |
 | Availability / condition | all four availability values; all three conditions; default condition `new`; `preorder`/`backorder` **with** `availabilityDate` mapped, **without** it not mapped (`missing_availability_date`) |
 | Enum mapping tables | every canonical lowercase enum member (`availability`, `condition`) has an entry in its explicit mapping table and maps to the matching Merchant uppercase value (`in_stock→IN_STOCK`, `new→NEW`, …); no other value is accepted, including already-uppercase input |
@@ -504,7 +510,7 @@ src/lib/merchant/google/types.ts                      payload + input + issue ty
 src/lib/merchant/google/errors.ts                     issue codes, safeIssueSummary
 src/lib/merchant/google/money.ts                      exponent table, minor-units/decimal → micros
 src/lib/merchant/google/identifiers.ts                offerId/contentLanguage/feedLabel/productInputId
-src/lib/merchant/google/gtin.ts                       normalize + GS1 checksum
+src/lib/merchant/google/gtin.ts                       exactly-as-supplied validation + GS1 checksum + coupon prefixes
 src/lib/merchant/google/text.ts                       NFC/trim, code-point length
 src/lib/merchant/google/urls.ts                       http/https-only URL validation
 src/lib/merchant/google/mapper.ts                     mapProductToMerchantInput, mapProducts
@@ -530,7 +536,7 @@ adapter reads canonical data through it.
 Not modified: `src/lib/proposals.ts` (Q4 decided: no `createProposal` in
 this milestone).
 
-Changed by Slice 0 (done, uncommitted): `prisma/schema.prisma` (additive
+Changed by Slice 0 (done; merged in PR #5, `fcaa5fb`): `prisma/schema.prisma` (additive
 expand-phase schema), the canonical Zod schemas and their tests under
 `src/lib/schema/`, ADR 0003 (accepted), and a minimal cross-reference note at
 the top of ADR 0001. **No migration file was created or applied.** Creating
@@ -561,7 +567,7 @@ Approval for one slice does not carry to the next.
 | Future phase | Authenticated read-only Merchant connection | live, read-only |
 | Later phase | Human-approved write transport | live, writes |
 
-### Slice 0 — Canonical Product/Variant ADR and schema decision (done, uncommitted)
+### Slice 0 — Canonical Product/Variant ADR and schema decision (done; merged in PR #5, `fcaa5fb`)
 
 Why first: the mapper's inputs depend on what the canonical record holds
 (F1, F2), and a schema change is the most expensive thing to redo.
@@ -570,7 +576,7 @@ Why first: the mapper's inputs depend on what the canonical record holds
 written and, on 2026-09-20, **Accepted**, with an explicit outcome for every
 proposal (P1–P13) and open question (OQ1–OQ7).
 
-**Step 2 — done (on `feat/canonical-variant-schema`, not committed):** the
+**Step 2 — done (merged in PR #5, merge commit `fcaa5fb`):** the
 additive expand-phase Prisma schema and the canonical Zod schemas with focused
 unit tests. Nothing else: no migration, Merchant mapper, Google client,
 transport, proposal execution, OAuth, or live-account work, and no database was
@@ -882,3 +888,13 @@ ADR 0004.
   error) and `mixed_currencies`.
 - ADR 0001's body is unchanged; it gains only a minimal cross-reference note.
 - Database contents remain unknown and no claim is made about rows.
+
+**Revision 7 (2026-09-20, minimal update)**
+
+- Slice 0 marked as merged: PR #5, merge commit `fcaa5fb`. This supersedes the
+  "uncommitted" wording in revision 6.
+- GTIN wording resolved in favor of accepted ADR 0003 D17 (§4.1, §4.5, §6, §9):
+  a GTIN is validated exactly as supplied and never trimmed, stripped, or
+  zero-padded, so spaces and dashes make it invalid; all-zero and 98/99 coupon
+  prefixes are rejected.
+- No other plan text was changed.
