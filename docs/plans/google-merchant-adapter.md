@@ -546,11 +546,11 @@ src/lib/merchant/google/gtin.ts                       exactly-as-supplied valida
 src/lib/merchant/google/text.ts                       NFC/trim, code-point length                    [Slice 1, done]
 src/lib/merchant/google/urls.ts                       http/https-only URL validation                 [Slice 1, done]
 src/lib/merchant/google/mapper.ts                     mapOffer, mapOffers                            [Slice 2, done]
-src/lib/merchant/google/proposal.ts                   toFeedUpdateProposal                           [Slice 3, not started]
-src/lib/merchant/google/adapter.ts                    GoogleMerchantAdapter interface + factory      [Slice 3, not started]
-src/lib/merchant/google/index.ts                      public exports                                 [Slice 3, not started]
+src/lib/merchant/google/proposal.ts                   toFeedUpdateProposal                           [Slice 3, implemented; verification pending]
+src/lib/merchant/google/adapter.ts                    GoogleMerchantAdapter interface + factory      [Slice 3, implemented; verification pending]
+src/lib/merchant/google/index.ts                      public exports                                 [Slice 3, implemented; verification pending]
 src/lib/merchant/google/__fixtures__/*.ts             typed fixtures (helpers.ts, records.ts)        [Slice 2, done]
-src/lib/merchant/google/*.test.ts                     one test file per module                       [Slices 1-2 done; Slice 3 guard test not started]
+src/lib/merchant/google/*.test.ts                     one test file per module                       [Slices 1-2 done; Slice 3 proposal and guard tests implemented; verification pending]
 ```
 
 The ADR 0004 and the `CHANGELOG.md`/`docs/plans/v0.1.md`/`eslint.config.mjs`
@@ -671,7 +671,7 @@ Unicode, and determinism (§6). Before the payload types are finalized,
 the "Not yet verified" field-name items in §13 are checked against
 Google's reference pages.
 
-### Slice 3 — Proposal preview integration
+### Slice 3 — Proposal preview integration (implemented on feat/google-merchant-adapter-slice-3; verification pending)
 
 `toFeedUpdateProposal`, the §8.2 ESLint override, and the guard test.
 Previews only ever become `pending` `feed_update` proposals; the module
