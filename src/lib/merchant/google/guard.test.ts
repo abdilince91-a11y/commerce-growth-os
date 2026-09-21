@@ -4,16 +4,16 @@ import { describe, expect, it } from "vitest";
 
 const root = join(process.cwd(), "src/lib/merchant");
 const restricted = [
-  /\\b(?:from\\s*|import\\s*\\(|require\\s*\\()\\s*["'](?:node:http|node:https|node:net|axios|googleapis|@\\/lib\\/db|@\\/lib\\/proposals)["']/,
-  /\\bfetch\\s*\\(/,
-  /\\bapplyProposal\\b/,
+  /\b(?:from\s*|import\s*\(|require\s*\()\s*["'](?:node:http|node:https|node:net|axios|googleapis|@\/lib\/db|@\/lib\/proposals)["']/,
+  /\bfetch\s*\(/,
+  /\bapplyProposal\b/,
 ];
 
 function sourceFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) return sourceFiles(path);
-    return /\\.(?:ts|tsx|js|jsx)$/.test(entry.name) && !entry.name.endsWith(".test.ts")
+    return /\.(?:ts|tsx|js|jsx)$/.test(entry.name) && !entry.name.endsWith(".test.ts")
       ? [path]
       : [];
   });
