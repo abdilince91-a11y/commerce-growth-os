@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- Google Merchant adapter offline milestone: canonical Product/Variant mapping,
+  deterministic `products/v1` payload previews, structured validation issues,
+  exact money conversion, proposal-preview integration, and mechanical
+  no-network/no-database/no-apply safeguards (ADR 0004)
 - ADR 0000: tech stack (TypeScript, Next.js, PostgreSQL, Prisma, Zod, Vitest, GitHub Actions)
 - ADR 0001: canonical product schema
 - ADR 0002: human approval gate (`Proposal` state machine)
