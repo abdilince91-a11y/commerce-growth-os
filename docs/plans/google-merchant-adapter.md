@@ -1,8 +1,9 @@
 # Google Merchant Adapter — v0.1 Implementation Plan
 
-Status: DRAFT (revision 8) — Slice 0 is merged (PR #5, merge commit
-`fcaa5fb`). The later slices and the live phases follow the order and gates
-in §11; each still needs its own go-ahead.
+Status: DRAFT (revision 9) — Slices 0–2 are merged (PRs #5–#7). Slice 3 is
+implemented on `feat/google-merchant-adapter-slice-3` and awaits review. Slice
+4 and the live phases follow the order and gates in §11; each still needs its
+own go-ahead.
 Branch: written on `feat/google-merchant-adapter` (merged); Slice 0 step 2
 was merged from `feat/canonical-variant-schema` (PR #5).
 Milestone: step 4 of `docs/plans/v0.1.md` §6.
@@ -10,10 +11,10 @@ Written: 2026-09-19 · Revised: 2026-09-20 (slice order with a new Slice 0,
 confirmed live-phase facts, the Slice 0 decisions recorded in ADR 0003,
 and ADR 0003's acceptance with Slice 0 step 2; see §14)
 
-Scope of this document: it describes the plan. As of revision 7, Slice 0
-(ADR 0003 accepted; the additive Prisma schema and canonical Zod schemas)
-is implemented and merged (PR #5, `fcaa5fb`). **Not implemented by Slice 0:** any migration, Merchant mapper, Google
-client, transport, proposal execution, OAuth, or live-account work.
+Scope of this document: it describes the plan. Slices 0–2 are implemented and
+merged; Slice 3 adds proposal-preview integration without persistence or
+execution. **Not implemented:** any migration, Google client, transport,
+proposal execution, OAuth, or live-account work.
 
 Implementation order (details in §11):
 Slice 0 canonical Product/Variant ADR and schema decision → Slice 1 pure
@@ -546,11 +547,11 @@ src/lib/merchant/google/gtin.ts                       exactly-as-supplied valida
 src/lib/merchant/google/text.ts                       NFC/trim, code-point length                    [Slice 1, done]
 src/lib/merchant/google/urls.ts                       http/https-only URL validation                 [Slice 1, done]
 src/lib/merchant/google/mapper.ts                     mapOffer, mapOffers                            [Slice 2, done]
-src/lib/merchant/google/proposal.ts                   toFeedUpdateProposal                           [Slice 3, not started]
-src/lib/merchant/google/adapter.ts                    GoogleMerchantAdapter interface + factory      [Slice 3, not started]
-src/lib/merchant/google/index.ts                      public exports                                 [Slice 3, not started]
+src/lib/merchant/google/proposal.ts                   toFeedUpdateProposal                           [Slice 3, done]
+src/lib/merchant/google/adapter.ts                    GoogleMerchantAdapter interface + factory      [Slice 3, done]
+src/lib/merchant/google/index.ts                      public exports                                 [Slice 3, done]
 src/lib/merchant/google/__fixtures__/*.ts             typed fixtures (helpers.ts, records.ts)        [Slice 2, done]
-src/lib/merchant/google/*.test.ts                     one test file per module                       [Slices 1-2 done; Slice 3 guard test not started]
+src/lib/merchant/google/*.test.ts                     focused module tests + architecture guard       [Slices 1-3 done]
 ```
 
 The ADR 0004 and the `CHANGELOG.md`/`docs/plans/v0.1.md`/`eslint.config.mjs`
@@ -983,3 +984,17 @@ ADR 0004.
   not mapped, and which length limits come from the product data specification
   rather than the discovery schema.
 - The §5 code list and other plan text were not changed.
+
+**Revision 9 (2026-09-22, Slice 3 proposal preview integration)**
+
+- Slices 1 and 2 marked as merged in PRs #6 and #7; Slice 3 implemented on
+  `feat/google-merchant-adapter-slice-3` for review.
+- Added `toFeedUpdateProposal`, the frozen transport-free adapter facade, and
+  the package public export surface. Proposal previews are validated with
+  `ProposalCreateInputSchema`, use `{ state: "absent" }` when there is no prior
+  payload, and never carry status or decision fields.
+- Added the Merchant-scoped ESLint restrictions and an architecture guard test
+  that prohibit network, database, environment-secret, proposal persistence,
+  and proposal-application capabilities.
+- No dependency, Prisma schema, migration, transport, credential, `.env`, or
+  live-account change was made.
