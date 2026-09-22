@@ -1,9 +1,9 @@
 # Google Merchant Adapter — v0.1 Implementation Plan
 
-Status: DRAFT (revision 9) — Slices 0–2 are merged (PRs #5–#7). Slice 3 is
-implemented on `feat/google-merchant-adapter-slice-3` and awaits review. Slice
-4 and the live phases follow the order and gates in §11; each still needs its
-own go-ahead.
+Status: **OFFLINE MILESTONE COMPLETE** (revision 10) — Slices 0–3 are merged
+(PRs #5–#7 and #9). Slice 4 verification passed and ADR 0004 records the
+fixture-only boundary. Authenticated read-only and later approved-write phases
+remain separate, gated work.
 Branch: written on `feat/google-merchant-adapter` (merged); Slice 0 step 2
 was merged from `feat/canonical-variant-schema` (PR #5).
 Milestone: step 4 of `docs/plans/v0.1.md` §6.
@@ -713,25 +713,25 @@ Every code slice (0 step 2, 1, 2, 3) ends with `npm run typecheck`,
 
 ## 12. Acceptance criteria
 
-- [ ] Uses Merchant API `products/v1` payload shapes; no Content API code
-- [ ] No network call, credential, `.env`, or DB access anywhere in the module (ESLint + guard test pass)
-- [ ] `productInputId` is exactly `contentLanguage~feedLabel~offerId` and deterministic
-- [ ] `amountMicros` is exact for every case in §4.4, with no `Number` arithmetic on money
-- [ ] All items in the §6 test matrix exist and pass
-- [ ] Every validation failure is a structured `MerchantIssue`; none echoes raw values
-- [ ] Generated previews only ever become `pending` `feed_update` proposals; the module cannot import or call `applyProposal`
-- [ ] Slice 0 ADR (0003) accepted before Slice 1 starts; Prisma/Zod changed only as that ADR says, and unchanged by Slices 1–4
-- [ ] `offerId = Variant.sku`; `itemGroupId` derived from `Product.id` and set on every offer; `contentLanguage`/`feedLabel` come only from channel config
-- [ ] At the adapter boundary only `EUR` and `TRY` are accepted; every other well-formed currency returns `unsupported_currency` and a malformed one `invalid_currency`
-- [ ] The canonical `currency` is `VarChar(3)` validated as `^[A-Z]{3}$`; no currency enum exists
-- [ ] New canonical enums use lowercase values like the existing ones; no existing enum or id is changed; canonical-to-Merchant uppercase spellings are mapped by explicit, tested tables
-- [ ] The Slice 0 migration (when separately approved) is non-destructive: no legacy `Product` column is dropped
-- [ ] PREORDER/BACKORDER offers are mapped only when `availabilityDate` exists
-- [ ] No client type in this milestone has insert, update, or delete methods; no transport of any kind exists
-- [ ] No new dependencies; `npm audit` still reports 0 vulnerabilities
-- [ ] typecheck, lint, tests, build, and post-build lint pass
-- [ ] ADR 0004 written; CHANGELOG updated
-- [ ] Independent code review and security review completed, findings resolved or documented
+- [x] Uses Merchant API `products/v1` payload shapes; no Content API code
+- [x] No network call, credential, `.env`, or DB access anywhere in the module (ESLint + guard test pass)
+- [x] `productInputId` is exactly `contentLanguage~feedLabel~offerId` and deterministic
+- [x] `amountMicros` is exact for every case in §4.4, with no `Number` arithmetic on money
+- [x] All items in the §6 test matrix exist and pass
+- [x] Every validation failure is a structured `MerchantIssue`; none echoes raw values
+- [x] Generated previews only ever become `pending` `feed_update` proposals; the module cannot import or call `applyProposal`
+- [x] Slice 0 ADR (0003) accepted before Slice 1 starts; Prisma/Zod changed only as that ADR says, and unchanged by Slices 1–4
+- [x] `offerId = Variant.sku`; `itemGroupId` derived from `Product.id` and set on every offer; `contentLanguage`/`feedLabel` come only from channel config
+- [x] At the adapter boundary only `EUR` and `TRY` are accepted; every other well-formed currency returns `unsupported_currency` and a malformed one `invalid_currency`
+- [x] The canonical `currency` is `VarChar(3)` validated as `^[A-Z]{3}$`; no currency enum exists
+- [x] New canonical enums use lowercase values like the existing ones; no existing enum or id is changed; canonical-to-Merchant uppercase spellings are mapped by explicit, tested tables
+- [x] No migration was created; the separately gated future migration remains non-destructive as ADR 0003 requires
+- [x] PREORDER/BACKORDER offers are mapped only when `availabilityDate` exists
+- [x] No client type in this milestone has insert, update, or delete methods; no transport of any kind exists
+- [x] No new dependencies; `npm audit` still reports 0 vulnerabilities
+- [x] typecheck, lint, tests, build, and post-build lint pass
+- [x] ADR 0004 written; CHANGELOG updated
+- [x] Code and security review completed; the runtime mapped-offer guard was added and all findings resolved
 
 ## 13. Open questions
 
@@ -998,3 +998,18 @@ ADR 0004.
   and proposal-application capabilities.
 - No dependency, Prisma schema, migration, transport, credential, `.env`, or
   live-account change was made.
+
+**Revision 10 (2026-09-22, Slice 4 offline verification)**
+
+- Slice 3 marked merged in PR #9 after the protected `verify` check passed.
+- Completed the full offline acceptance sequence: typecheck, lint, 719 tests,
+  production build, post-build lint, audit (0 vulnerabilities), and diff check.
+- Recorded the accepted fixture-only, transport-free boundary in ADR 0004;
+  updated the changelog and marked v0.1 milestone step 4 complete.
+- Code and security review confirmed there is no network, credential, `.env`,
+  database, migration, proposal persistence/application, or live-account
+  capability. The runtime proposal boundary rejects skipped, invalid, and
+  malformed values.
+- The authenticated read-only Merchant connection remains a future phase with
+  its own ADR and security gate; later writes remain separately gated behind
+  human-approved proposals.
