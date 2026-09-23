@@ -24,6 +24,13 @@ Status: draft transport implemented; owner reported successful one-time project 
 - Keep Cloud Run invocations private and complete an independent security review of both modules before wiring an application route or making an application-originated live GET. The earlier manual GET tested a different token issuance path; metadata scope behavior and a real runtime read remain unverified in the deployed environment.
 - The read-only Merchant role is the effective protection against writes. The OAuth `content` scope is broader than read-only; any code running under the attached identity can request tokens, so runtime isolation and review matter.
 
+## Private one-shot runtime verification (prepared, not deployed)
+
+- `scripts/merchant-readonly-smoke.ts` runs as a Cloud Run **job**, not a public web endpoint. It requires `CLOUD_RUN_JOB`, a runtime Merchant account ID and an expected reader service-account email. It checks the attached identity, requests a token, makes a single `products.list?pageSize=1` GET and logs only the number of returned products. On failure it emits a fixed message and exits unsuccessfully; it never logs product data, an upstream response body or a token.
+- `Dockerfile.merchant-smoke` packages just the script and the two read modules with Node 22.18. `cloudbuild.merchant-smoke.yaml` builds that image with a caller-provided `_IMAGE` value. The Node.js container requires no downloaded service-account key or npm runtime installation.
+- After independent review, build an image in a private Artifact Registry repository, create a Cloud Run job with `--tasks=1 --max-retries=0 --task-timeout=60s --service-account=READER_EMAIL`, and supply only `GOOGLE_MERCHANT_ACCOUNT_ID` and `GOOGLE_MERCHANT_READER_EMAIL` as runtime settings. Execute it once with `gcloud run jobs execute JOB --region REGION --wait` and inspect the one-line result. Creating/building/executing cloud resources can incur charges; confirm the project has billing and deploy permissions before running commands. Do not create a public Cloud Run service for this test.
+- Cloud Run jobs set `CLOUD_RUN_JOB`, whereas services set `K_SERVICE`. The provider accepts either runtime marker and refuses to contact metadata outside Cloud Run. The local tests prove the job code path with an injected fetch implementation; the actual container build and a live Cloud Run execution remain unverified.
+
 ## Sources
 
 - https://developers.google.com/merchant/api/guides/quickstart/authentication
@@ -35,3 +42,6 @@ Status: draft transport implemented; owner reported successful one-time project 
 - https://docs.cloud.google.com/iam/docs/reference/credentials/rest/v1/projects.serviceAccounts/generateAccessToken
 - https://docs.cloud.google.com/run/docs/securing/service-identity
 - https://docs.cloud.google.com/kubernetes-engine/enterprise/knative-serving/docs/securing/service-identity
+- https://docs.cloud.google.com/run/docs/container-contract
+- https://docs.cloud.google.com/run/docs/create-jobs
+- https://docs.cloud.google.com/run/docs/execute/jobs

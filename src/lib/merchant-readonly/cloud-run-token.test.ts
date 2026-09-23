@@ -8,9 +8,19 @@ afterEach(() => vi.unstubAllEnvs());
 describe("Cloud Run Merchant token supplier", () => {
   it("fails closed outside Cloud Run without requesting metadata", async () => {
     vi.stubEnv("K_SERVICE", "");
+    vi.stubEnv("CLOUD_RUN_JOB", "");
     const fetcher = vi.fn<typeof fetch>();
     await expect(createCloudRunMerchantTokenProvider(reader, fetcher)()).rejects.toThrow("Merchant authentication unavailable");
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("supports Cloud Run jobs without a service marker", async () => {
+    vi.stubEnv("K_SERVICE", "");
+    vi.stubEnv("CLOUD_RUN_JOB", "merchant-smoke");
+    const metadata = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(reader))
+      .mockResolvedValueOnce(Response.json({ access_token: "ephemeral", token_type: "Bearer" }));
+    await expect(createCloudRunMerchantTokenProvider(reader, metadata)()).resolves.toBe("ephemeral");
   });
 
   it("requests only the Merchant scope from the fixed metadata endpoint and supplies a read client", async () => {

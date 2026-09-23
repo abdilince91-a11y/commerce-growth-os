@@ -11,7 +11,7 @@ export function createCloudRunMerchantTokenProvider(expectedServiceAccountEmail:
 
   return async () => {
     // Fail closed outside Cloud Run; a local developer must never silently use their ADC.
-    if (!process.env.K_SERVICE) throw new Error("Merchant authentication unavailable");
+    if (!process.env.K_SERVICE && !process.env.CLOUD_RUN_JOB) throw new Error("Merchant authentication unavailable");
 
     try {
       const options: RequestInit = {
