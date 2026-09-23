@@ -489,7 +489,10 @@ plan or by those slices.
 **Confirmed facts recorded for the live phase** (and only these):
 
 1. The Merchant API does **not** support API keys for authentication.
-2. **OAuth 2.0 is required.**
+2. Requests require an OAuth 2.0 access token. For an application serving its
+   own business, Google recommends service-account authorization; third-party
+   apps serving other merchants use user OAuth consent. See ADR 0005 for the
+   read-only transport design and the remaining account setup prerequisites.
 3. The product API authorization scope is
    `https://www.googleapis.com/auth/content`.
 4. A **dedicated Google Cloud project** is required.
@@ -525,11 +528,13 @@ a proposal loaded from the database in status `approved` with a human
 only after a confirmed successful send. It needs its own ADR and security
 review before merge, and an explicit human go-ahead.
 
-**Merchant Center roles and permissions are deliberately not asserted
-here.** Which access level a read-only user needs, whether a read-only
-level can authorize and call list/get, and whether an "API developer"
-level is required were not confirmed from an official page. They are
-open questions (L1–L3 in §13) and do not block Slices 0–4.
+**Live access remains unverified.** Google's Merchant API `accounts.users`
+reference now describes `READ_ONLY` as allowed to call read methods and unable
+to call mutating methods, while the quickstart FAQ says callers must have
+`ADMIN`. See ADR 0005 for the separation between one-time registration and
+the reader identity. Do not grant the long-running reader `ADMIN` to resolve
+this documentation discrepancy; verify `READ_ONLY` with a harmless live read
+after registration. L1–L3 in §13 track the remaining role questions.
 
 ## 9. Proposed files
 
@@ -690,15 +695,15 @@ and tick step 4 in `docs/plans/v0.1.md`.
 
 ### Future phase — Authenticated read-only Merchant connection
 
-**Not part of this milestone.** Starts only on an explicit human
-go-ahead after Slice 4. Built on the confirmed facts in §8.3:
-OAuth 2.0 (no API keys), a dedicated Google Cloud project, developer
-registration by a Merchant Center Admin, an API data source, and the
-`content` scope. Because that scope is not read-only, the connection is
-read-only **by construction**: only list/get operations exist, and there
-are no insert, update, or delete transport methods. Its own ADR and
-security review come first. Merchant Center role questions (L1–L3) must
-be answered before it starts.
+**Not part of the completed offline milestone.** The draft transport exists
+under ADR 0005, but live activation requires a dedicated Google Cloud
+project, developer registration by a Merchant Center Admin, a verified
+reader identity, and the `content` scope. An API data source is needed for
+future product insertion, not for processed-product reads. Because that
+scope is not read-only, the connection has only list/get operations and
+the reader must have the smallest role actually verified to support them.
+Its security review comes before a controlled live list/get verification;
+the L1–L3 role questions must be resolved before a production caller is added.
 
 ### Later phase — Human-approved write transport
 
@@ -776,13 +781,14 @@ ADR 0003 "Remaining decisions".
 
 ### C. Live-phase questions (do not block Slices 0–4)
 
-None of these are answered by an official page I could confirm, so none
-is asserted anywhere in this plan.
+The read-only role and `API developer` role have now been documented in
+official sources, but the registration FAQ conflicts with the role reference;
+the remaining live questions require account-specific verification.
 
 | # | Question |
 |---|---|
-| L1 | Which Merchant Center access level must the user who authorizes the read-only connection have? Can a "read-only" level authorize and call list/get? (Google's Help Center describes a read-only level; the API's access-level documentation lists `ADMIN`, `STANDARD`, and `PERFORMANCE_REPORTING`. Not reconciled.) |
-| L2 | Is an "API developer" access level required, and by whom (the registering user, the calling user, or both)? |
+| L1 | The `accounts.users` REST reference says `READ_ONLY` permits read methods but not mutations; the quickstart FAQ says `ADMIN` is required for subsequent API calls. Does an actual list/get succeed with `READ_ONLY` after an `ADMIN` identity registers the Cloud project? Never test with writes. |
+| L2 | The developer registration requires at least one real Google-account contact with `API_DEVELOPER` to receive notices; the role by itself does not grant product API access. Confirm the owner's contact and invitation status at registration. |
 | L3 | Can an API data source be created in the Merchant Center UI, or only through the API, and which access level is needed to create it? |
 | L4 | Which OAuth consent-screen status applies to a personal-account owner, and what does it mean for refresh-token lifetime? |
 | L5 | ~~Re-verify the exact `content` scope string.~~ **Verified in Slice 2:** the official Merchant API v1 discovery document lists `https://www.googleapis.com/auth/content` (revision 20260910). Google's scopes page itself was not consulted. |
