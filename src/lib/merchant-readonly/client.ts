@@ -16,6 +16,8 @@ export type MerchantReadClient = Readonly<{
 }>;
 
 export type MerchantReadDependencies = Readonly<{
+  /** The one Merchant account this client is allowed to read. */
+  accountId: string;
   getAccessToken(): Promise<string>;
   fetcher: (url: string, init: RequestInit) => Promise<Response>;
 }>;
@@ -77,6 +79,12 @@ function parseProduct(value: unknown, parent: string): MerchantProductView {
 /** The caller supplies an ephemeral token provider. Neither credentials nor transport are exported. */
 export function createMerchantReadClient(dependencies: MerchantReadDependencies): MerchantReadClient {
   if (typeof window !== "undefined") throw new Error("Merchant read client is server-only");
+  const boundParent = parentFor(dependencies.accountId);
+  function checkedParent(accountId: string): string {
+    const parent = parentFor(accountId);
+    if (parent !== boundParent) throw new Error("Invalid Merchant account ID");
+    return parent;
+  }
   async function request(path: string, query?: URLSearchParams): Promise<unknown> {
     let token: string;
     try { token = await dependencies.getAccessToken(); } catch { throw new Error("Merchant authentication unavailable"); }
@@ -99,7 +107,7 @@ export function createMerchantReadClient(dependencies: MerchantReadDependencies)
 
   return Object.freeze({
     async listProducts(accountId: string, options: { pageSize?: number; pageToken?: string } = {}) {
-      const parent = parentFor(accountId);
+      const parent = checkedParent(accountId);
       if (options.pageSize !== undefined && (!Number.isInteger(options.pageSize) || options.pageSize < 1 || options.pageSize > 1000)) {
         throw new Error("Invalid page size");
       }
@@ -122,7 +130,7 @@ export function createMerchantReadClient(dependencies: MerchantReadDependencies)
       };
     },
     async getProduct(accountId: string, productName: string) {
-      const parent = parentFor(accountId);
+      const parent = checkedParent(accountId);
       const name = productNameFor(parent, productName);
       const product = parseProduct(await request(name), parent);
       if (product.name !== name && product.base64EncodedName !== name) {

@@ -11,7 +11,7 @@ function setup(response: Response = Response.json({ products: [product], nextPag
     return response;
   });
   const getAccessToken = vi.fn(async () => "private-token");
-  return { client: createMerchantReadClient({ fetcher, getAccessToken }), fetcher, getAccessToken };
+  return { client: createMerchantReadClient({ accountId: "123", fetcher, getAccessToken }), fetcher, getAccessToken };
 }
 
 describe("Merchant processed-product read client", () => {
@@ -50,8 +50,18 @@ describe("Merchant processed-product read client", () => {
     await expect(client.listProducts("123", { pageToken: "" })).rejects.toThrow("Invalid page token");
     await expect(client.getProduct("123", "accounts/456/products/en~US~sku")).rejects.toThrow("Invalid product name");
     await expect(client.getProduct("123", "accounts/123/products/../evil")).rejects.toThrow("Invalid product name");
+    await expect(client.listProducts("456")).rejects.toThrow("Invalid Merchant account ID");
+    await expect(client.getProduct("456", "accounts/456/products/en~US~sku")).rejects.toThrow("Invalid Merchant account ID");
     expect(fetcher).not.toHaveBeenCalled();
     expect(getAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid bound account before creating a client", () => {
+    expect(() => createMerchantReadClient({
+      accountId: "123/evil",
+      getAccessToken: async () => "token",
+      fetcher: async () => Response.json({}),
+    })).toThrow("Invalid Merchant account ID");
   });
 
   it("rejects malformed responses and never includes tokens or upstream bodies in errors", async () => {
@@ -67,7 +77,7 @@ describe("Merchant processed-product read client", () => {
       expect(init.method).toBe("GET");
       return Response.json(product);
     });
-    const client = createMerchantReadClient({ fetcher, getAccessToken: async () => "bad\r\ntoken" });
+    const client = createMerchantReadClient({ accountId: "123", fetcher, getAccessToken: async () => "bad\r\ntoken" });
     await expect(client.getProduct("123", name)).rejects.toThrow("Merchant authentication unavailable");
     expect(fetcher).not.toHaveBeenCalled();
   });
