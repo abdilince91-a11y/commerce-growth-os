@@ -1,6 +1,6 @@
 # Merchant Center read-only connection — implementation plan
 
-Status: draft transport implemented; account activation pending (2026-09-23). See ADR 0005.
+Status: draft transport implemented; Merchant reader access verified; project registration and live API verification pending (2026-09-23). See ADR 0005.
 
 ## Scope
 
@@ -12,9 +12,9 @@ Status: draft transport implemented; account activation pending (2026-09-23). Se
 
 ## Account activation prerequisites
 
-- The owner reports an existing Merchant account with verified site, a dedicated Cloud project with Merchant API enabled, and a service account created without project roles or a JSON key. These setup statements are not proof of developer registration or a successful API call; do not place the account and project identifiers in the source tree.
+- The owner reports an existing Merchant account with verified site and a dedicated Cloud project with Merchant API enabled. The service account appears in Merchant Center's People and access list with exactly Read-only and Verified status. No JSON key was generated or supplied during this work. The reported Cloud setup and observed Merchant role are not proof of developer registration or a successful API call; do not place the account and project identifiers in the source tree.
 - For the one-time `registerGcp` call, use an existing Merchant `ADMIN` identity with credentials issued from the dedicated project. A project-bound user OAuth flow is preferred here so the long-running reader never needs `ADMIN`. Developer contact must be a real Google account able to receive API notices, not the service account. No registration or live request is implemented by this draft.
-- After registration, grant the application's service account `READ_ONLY` in Merchant Center and verify a harmless list/get request. The REST `accounts.users` reference documents `READ_ONLY` for read methods, but Google's quickstart FAQ claims `ADMIN` is required even for subsequent API calls. Resolve the discrepancy by testing with `READ_ONLY`; if Google rejects it, stop and review the access model rather than widening the reader's role.
+- The application's service account has already been granted `READ_ONLY` in Merchant Center. After registration, verify a harmless list/get request. The REST `accounts.users` reference documents `READ_ONLY` for read methods, but Google's quickstart FAQ claims `ADMIN` is required even for subsequent API calls. Resolve the discrepancy by testing with `READ_ONLY`; if Google rejects it, stop and review the access model rather than widening the reader's role.
 - Choose the deployment environment and keyless identity method before implementing the token supplier. Never commit, upload to chat, or paste a JSON private key or access token. Do not add a production route or perform a live connection until an independent security review and explicit runtime configuration are complete.
 
 ## Sources
