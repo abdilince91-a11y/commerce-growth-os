@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 15858)
-Total output lines: 1018
-
 # Google Merchant Adapter — v0.1 Implementation Plan
 
 Status: **OFFLINE MILESTONE COMPLETE** (revision 10) — Slices 0–3 are merged
@@ -489,7 +486,65 @@ A real Merchant Center account exists for a later integration. Slices
 service-account key is requested, created, printed, or stored by this
 plan or by those slices.
 
-**Confirm…858 tokens truncated…r-units/decimal → micros   [Slice 1, done]
+**Confirmed facts recorded for the live phase** (and only these):
+
+1. The Merchant API does **not** support API keys for authentication.
+2. Requests require an OAuth 2.0 access token. For an application serving its
+   own business, Google recommends service-account authorization; third-party
+   apps serving other merchants use user OAuth consent. See ADR 0005 for the
+   read-only transport design and the remaining account setup prerequisites.
+3. The product API authorization scope is
+   `https://www.googleapis.com/auth/content`.
+4. A **dedicated Google Cloud project** is required.
+5. Merchant API **developer registration links the Cloud project to the
+   Merchant Center account**.
+6. The user performing registration must have **Merchant Center Admin**
+   access.
+7. **Product insertion requires an API data source.**
+8. The `content` scope is **not a read-only scope**. The first live
+   connection must therefore be read-only **through application
+   behavior**: implement only `list` and `get` operations, and define
+   **no insert, update, or delete transport methods** at all.
+
+Basis: recorded as confirmed in the 2026-09-20 review and consistent with
+Google's [authorization overview](https://developers.google.com/merchant/api/guides/authorization/overview),
+[API data sources guide](https://developers.google.com/merchant/api/guides/data-sources/api-sources),
+and [OAuth scopes reference](https://developers.google.com/identity/protocols/oauth2/scopes).
+The exact scope string was seen only in a search summary of Google's
+documentation, not on the Merchant API authentication page, so re-check it
+on the official scopes page before the read-only phase begins.
+
+**What "read-only through application behavior" means in code:** the
+read-only phase exposes a client type whose methods are only list/get
+style reads. Insert, update, and delete methods do not exist on any type
+in that phase, so a write is impossible to express, not merely rejected
+at runtime. The same lint-and-guard-test approach as §8.2 (restricted
+imports plus a test that fails if a write-style method or endpoint name
+appears) keeps it that way.
+
+**Later write transport** (a separate phase, see §11): it must accept only
+a proposal loaded from the database in status `approved` with a human
+`decidedBy`, re-validate its `after` payload, and call `applyProposal`
+only after a confirmed successful send. It needs its own ADR and security
+review before merge, and an explicit human go-ahead.
+
+**Merchant Center roles and permissions are deliberately not asserted
+here.** Which access level a read-only user needs, whether a read-only
+level can authorize and call list/get, and whether an "API developer"
+level is required were not confirmed from an official page. They are
+open questions (L1–L3 in §13) and do not block Slices 0–4.
+
+## 9. Proposed files
+
+New:
+
+```
+docs/plans/google-merchant-adapter.md                 (this file)
+docs/decisions/0003-canonical-product-variant.md      (Slice 0: written and Accepted)
+docs/decisions/0004-google-merchant-adapter.md        (Slice 4: fixture-only boundary, v1 API, read-only-first live phase)
+src/lib/merchant/google/types.ts                      payload + input + result types                 [Slice 2, done]
+src/lib/merchant/google/errors.ts                     issue codes, safeOfferId, summarizeIssues      [Slice 2, done]
+src/lib/merchant/google/money.ts                      exponent table, minor-units/decimal → micros   [Slice 1, done]
 src/lib/merchant/google/identifiers.ts                offerId/contentLanguage/feedLabel/productInputId [Slice 1, done]
 src/lib/merchant/google/gtin.ts                       exactly-as-supplied validation + GS1 checksum + coupon prefixes [Slice 1, done]
 src/lib/merchant/google/text.ts                       NFC/trim, code-point length                    [Slice 1, done]
