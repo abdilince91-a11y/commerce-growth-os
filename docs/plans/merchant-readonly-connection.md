@@ -1,6 +1,6 @@
 # Merchant Center read-only connection — implementation plan
 
-Status: draft transport implemented; Merchant reader access verified; project registration and live API verification pending (2026-09-23). See ADR 0005.
+Status: draft transport implemented; owner reported successful one-time project registration and manual read-only live GET (2026-09-23). Application runtime integration and independent security review remain pending. See ADR 0005.
 
 ## Scope
 
@@ -10,12 +10,12 @@ Status: draft transport implemented; Merchant reader access verified; project re
 4. Record account setup, permissions, auth choice and security review in ADR 0005. No Cloud registration, credentials, account access, token storage, database, UI, or write endpoints in this slice.
 5. Run tests, typecheck, lint, build, audit and inspect the diff. Publish for review only after verification.
 
-## Account activation prerequisites
+## Account activation and remaining gates
 
-- The owner reports an existing Merchant account with verified site and a dedicated Cloud project with Merchant API enabled. The service account appears in Merchant Center's People and access list with exactly Read-only and Verified status. No JSON key was generated or supplied during this work. The reported Cloud setup and observed Merchant role are not proof of developer registration or a successful API call; do not place the account and project identifiers in the source tree.
-- For the one-time `registerGcp` call, use an existing Merchant `ADMIN` identity with credentials issued from the dedicated project. A project-bound user OAuth flow is preferred here so the long-running reader never needs `ADMIN`. Developer contact must be a real Google account able to receive API notices, not the service account. No registration or live request is implemented by this draft.
-- The application's service account has already been granted `READ_ONLY` in Merchant Center. After registration, verify a harmless list/get request. The REST `accounts.users` reference documents `READ_ONLY` for read methods, but Google's quickstart FAQ claims `ADMIN` is required even for subsequent API calls. Resolve the discrepancy by testing with `READ_ONLY`; if Google rejects it, stop and review the access model rather than widening the reader's role.
-- Choose the deployment environment and keyless identity method before implementing the token supplier. Never commit, upload to chat, or paste a JSON private key or access token. Do not add a production route or perform a live connection until an independent security review and explicit runtime configuration are complete.
+- The owner confirmed a verified Merchant website, a dedicated Cloud project with Merchant API enabled, and a service account shown in Merchant Center with exactly Read-only and Verified status. No service-account JSON key was created or shared. Account and project identifiers remain outside the source tree.
+- The owner performed `registerGcp` once with their existing Merchant administrator account and the dedicated project's desktop OAuth client. The successful response identified the expected Merchant account and Cloud project. The request body was `{}`, so no developer contact or Merchant user role was added by that call. Review the technical-contact requirement separately.
+- For manual verification, the owner granted their own Cloud identity `roles/iam.serviceAccountTokenCreator` **on the reader service account only**, enabled the Service Account Credentials API, minted a ten-minute `content`-scoped token by impersonation, and reported `GET products/v1/accounts/{account}/products?pageSize=1` succeeded with one product returned. No product data, access token, OAuth secret, or private key was shared or saved to this repository. This resolves the documented `READ_ONLY` versus `ADMIN` ambiguity for this observed list request; it does not establish `get` behavior or future policy stability.
+- The GET was an owner-run PowerShell request, not a call through this repository's client. Select a deployment environment and keyless workload identity method before implementing the injected token supplier. Keep the independent security review and explicit runtime configuration gates before adding a production caller or UI; never commit or upload credentials.
 
 ## Sources
 
@@ -25,3 +25,4 @@ Status: draft transport implemented; Merchant reader access verified; project re
 - https://developers.google.com/merchant/api/reference/rest/products_v1/accounts.products/get
 - https://developers.google.com/merchant/api/reference/rest/accounts_v1/accounts.users
 - https://developers.google.com/merchant/api/guides/quickstart/faq
+- https://docs.cloud.google.com/iam/docs/reference/credentials/rest/v1/projects.serviceAccounts/generateAccessToken

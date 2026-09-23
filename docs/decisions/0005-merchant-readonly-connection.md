@@ -1,6 +1,6 @@
 # ADR 0005: Merchant API read-only transport boundary
 
-Status: **Proposed** (2026-09-23; security and account-access review pending)
+Status: **Proposed** (2026-09-23; manual account-access check passed, independent security and deployment review pending)
 
 ## Context
 
@@ -18,9 +18,9 @@ ADR 0004 keeps the canonical Google Merchant adapter offline. The next phase nee
 
 ## Security and release gates
 
-Offline tests must show fixed-origin GET-only requests, rejection of a foreign account before token acquisition, rejected malformed inputs and responses, no token leakage in errors, and no write methods. An independent security review and live account setup are required before connecting a real account. The owner reported a dedicated project with Merchant API enabled and a service-account identity; neither developer registration nor Merchant account access, credentials, deployment identity, quotas, or a live read has been verified by this application. The current draft has no credential provider or production caller and does not claim a live connection exists.
+Offline tests must show fixed-origin GET-only requests, rejection of a foreign account before token acquisition, rejected malformed inputs and responses, no token leakage in errors, and no write methods. The owner reported successful developer registration with their Merchant administrator OAuth identity and a successful manual `products.list` GET with a short-lived, `content`-scoped token minted for the Merchant `READ_ONLY` service account. The manual request returned one product on a page of size one. These are owner-reported operational checks outside this repository; the draft client still has no credential provider or production caller. Deployment identity, quota behavior and an independent security review remain gates for application integration. The registration used an empty body; technical contact information was not added in that call.
 
-Google's published guidance has a role discrepancy: the `accounts.users` REST reference explicitly says `READ_ONLY` can use read-only methods and cannot use mutating methods, whereas the quickstart FAQ says identities making API calls after project registration must have `ADMIN`. Keep the reader unprivileged until this is resolved by a harmless live list/get test with `READ_ONLY`. If Google rejects that role, do not silently elevate the long-running reader to `ADMIN`; revisit the design and obtain a separate review. A live test must not create, update, or delete Merchant data.
+Google's published guidance has a role discrepancy: the `accounts.users` REST reference explicitly says `READ_ONLY` can use read-only methods and cannot use mutating methods, whereas the quickstart FAQ says identities making API calls after project registration must have `ADMIN`. The owner-reported live `list` GET worked with the `READ_ONLY` service account; `get` has not been tested. Retain `READ_ONLY`; if a future read is rejected, review the access model instead of silently elevating the long-running reader. No product input was created, updated or deleted during the manual test.
 
 ## Sources
 
@@ -31,3 +31,4 @@ Google's published guidance has a role discrepancy: the `accounts.users` REST re
 - https://developers.google.com/merchant/api/reference/rest/accounts_v1/accounts.users
 - https://developers.google.com/merchant/api/guides/quickstart/faq
 - https://docs.cloud.google.com/iam/docs/best-practices-for-managing-service-account-keys
+- https://docs.cloud.google.com/iam/docs/reference/credentials/rest/v1/projects.serviceAccounts/generateAccessToken
