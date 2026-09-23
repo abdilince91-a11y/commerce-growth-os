@@ -44,3 +44,18 @@ jobs:
             echo "Unexpected Merchant probe output; inspect the failed job without posting credentials"
             exit 1
           fi
+
+  verify-windows-script:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse Merchant Cloud Run PowerShell script
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile('scripts/run-merchant-cloud-probe.ps1', [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
