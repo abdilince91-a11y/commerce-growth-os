@@ -1,6 +1,6 @@
 # Merchant Center read-only connection — implementation plan
 
-Status: draft transport implemented; owner reported successful one-time project registration and manual read-only live GET (2026-09-23). Application runtime integration and independent security review remain pending. See ADR 0005.
+Status: draft transport implemented; owner reported successful one-time project registration and manual read-only live GET (2026-09-23). A separate Cloud Run token supplier has offline tests; deployment, an application live GET and independent security review remain pending. See ADR 0005.
 
 ## Scope
 
@@ -17,6 +17,13 @@ Status: draft transport implemented; owner reported successful one-time project 
 - For manual verification, the owner granted their own Cloud identity `roles/iam.serviceAccountTokenCreator` **on the reader service account only**, enabled the Service Account Credentials API, minted a ten-minute `content`-scoped token by impersonation, and reported `GET products/v1/accounts/{account}/products?pageSize=1` succeeded with one product returned. No product data, access token, OAuth secret, or private key was shared or saved to this repository. This resolves the documented `READ_ONLY` versus `ADMIN` ambiguity for this observed list request; it does not establish `get` behavior or future policy stability.
 - The GET was an owner-run PowerShell request, not a call through this repository's client. Select a deployment environment and keyless workload identity method before implementing the injected token supplier. Keep the independent security review and explicit runtime configuration gates before adding a production caller or UI; never commit or upload credentials.
 
+## Cloud Run token supplier (offline preparation)
+
+- `src/lib/merchant-readonly/cloud-run-token.ts` requests a short-lived OAuth access token from the Cloud Run metadata server with the `https://www.googleapis.com/auth/content` scope. It requires the Cloud Run `K_SERVICE` runtime marker, fixes the metadata endpoint, rejects redirects, times out after five seconds and hides response bodies and tokens in errors. No JSON key or user ADC is used.
+- For deployment, attach the already verified read-only Merchant service account as the Cloud Run service identity. Supply the Merchant account ID through secure runtime configuration to construct `createMerchantReadClient({ accountId, getAccessToken: createCloudRunMerchantTokenProvider(), fetcher: fetch })` on the server. This is a recipe, not a deployed service or an endpoint; no account ID, product data or credential is embedded in code.
+- Keep Cloud Run invocations private and complete an independent security review of both modules before wiring an application route or making an application-originated live GET. The earlier manual GET tested a different token issuance path; metadata scope behavior and a real runtime read remain unverified in the deployed environment.
+- The read-only Merchant role is the effective protection against writes. The OAuth `content` scope is broader than read-only; any code running under the attached identity can request tokens, so runtime isolation and review matter.
+
 ## Sources
 
 - https://developers.google.com/merchant/api/guides/quickstart/authentication
@@ -26,3 +33,5 @@ Status: draft transport implemented; owner reported successful one-time project 
 - https://developers.google.com/merchant/api/reference/rest/accounts_v1/accounts.users
 - https://developers.google.com/merchant/api/guides/quickstart/faq
 - https://docs.cloud.google.com/iam/docs/reference/credentials/rest/v1/projects.serviceAccounts/generateAccessToken
+- https://docs.cloud.google.com/run/docs/securing/service-identity
+- https://docs.cloud.google.com/kubernetes-engine/enterprise/knative-serving/docs/securing/service-identity
