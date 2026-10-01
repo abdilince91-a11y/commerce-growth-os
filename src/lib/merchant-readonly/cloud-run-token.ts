@@ -1,6 +1,6 @@
 /** Keyless Merchant token supplier for a Cloud Run service with the reader identity attached. */
 const METADATA_TOKEN_URL =
-  "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token?scopes=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcontent";
+  "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token?enforce_scopes=true&scopes=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcontent";
 const METADATA_EMAIL_URL =
   "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email";
 const SERVICE_ACCOUNT_EMAIL = /^[a-z0-9-]+@[a-z0-9-]+\.iam\.gserviceaccount\.com$/;

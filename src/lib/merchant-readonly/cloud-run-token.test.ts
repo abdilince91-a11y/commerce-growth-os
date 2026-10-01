@@ -38,6 +38,7 @@ describe("Cloud Run Merchant token supplier", () => {
     const parsed = new URL(String(url));
     expect(parsed.origin).toBe("http://metadata.google.internal");
     expect(parsed.pathname).toBe("/computeMetadata/v1/instance/service-accounts/default/token");
+    expect(parsed.searchParams.get("enforce_scopes")).toBe("true");
     expect(parsed.searchParams.get("scopes")).toBe("https://www.googleapis.com/auth/content");
     expect(init).toMatchObject({ method: "GET", redirect: "error", cache: "no-store", headers: { "Metadata-Flavor": "Google" } });
     expect(api.mock.calls[0]![1]).toMatchObject({ method: "GET", headers: { Authorization: "Bearer short-lived-token" } });
