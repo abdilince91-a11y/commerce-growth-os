@@ -23,6 +23,7 @@ export type MerchantReadDependencies = Readonly<{
 }>;
 
 const API = "https://merchantapi.googleapis.com/products/v1/";
+const REQUEST_TIMEOUT_MS = 10_000;
 const ACCOUNT_ID = /^[0-9]{1,32}$/;
 const SEGMENT = /^[A-Za-z0-9_~-]{1,512}$/;
 
@@ -99,6 +100,7 @@ export function createMerchantReadClient(dependencies: MerchantReadDependencies)
         headers: { Authorization: `Bearer ${token}` },
         redirect: "error",
         cache: "no-store",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch { throw new Error("Merchant API request failed"); }
     if (!response.ok) throw new Error(`Merchant API request failed (${response.status})`);

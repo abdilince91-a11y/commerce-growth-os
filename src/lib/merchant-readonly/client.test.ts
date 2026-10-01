@@ -25,6 +25,7 @@ describe("Merchant processed-product read client", () => {
     const [url, init] = fetcher.mock.calls[0]!;
     expect(url).toBe("https://merchantapi.googleapis.com/products/v1/accounts/123/products?pageSize=10&pageToken=a%2Fb%2Bc");
     expect(init).toMatchObject({ method: "GET", redirect: "error", cache: "no-store", headers: { Authorization: "Bearer private-token" } });
+    expect(init.signal).toBeInstanceOf(AbortSignal);
     expect(Object.keys(client).sort()).toEqual(["getProduct", "listProducts"]);
   });
 
@@ -69,6 +70,16 @@ describe("Merchant processed-product read client", () => {
     await expect(client.listProducts("123")).rejects.toThrow("Merchant API request failed (403)");
     const broken = setup(Response.json({ products: [{ ...product, name: "accounts/456/products/en~US~sku" }] }));
     await expect(broken.client.listProducts("123")).rejects.toThrow("Invalid Merchant API response");
+  });
+
+  it("hides a timed-out request error and never returns upstream details", async () => {
+    const fetcher = vi.fn(async (_url: string, init: RequestInit): Promise<Response> => {
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+      throw new DOMException("private-token upstream timeout details", "TimeoutError");
+    });
+    const client = createMerchantReadClient({ accountId: "123", fetcher, getAccessToken: async () => "private-token" });
+    await expect(client.listProducts("123")).rejects.toThrow(/^Merchant API request failed$/);
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 
   it("rejects invalid token and does not issue a request", async () => {
