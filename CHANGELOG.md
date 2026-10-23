@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Offline Pinterest retail catalog adapter: validated canonical variant rows,
+  deterministic UTF-8 CSV previews, conflict checks and proposal snapshots.
 - Security hardening: bounded Merchant response parsing, conditional proposal
   decisions/application, patched dependencies, pinned non-root probe image,
   required CI vulnerability checks, daily scans and weekly update proposals.
