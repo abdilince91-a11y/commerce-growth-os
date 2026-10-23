@@ -5,21 +5,30 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     env:
       DATABASE_URL: "postgresql://user:password@localhost:5432/commerce_growth_os"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "22"
           cache: "npm"
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
 
       - name: Generate Prisma client
         run: npm run prisma:generate
@@ -33,9 +42,13 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Build application
+        run: npm run build
+
       - name: Build and check Merchant smoke image
         run: |
           docker build -f Dockerfile.merchant-smoke -t merchant-smoke:ci .
+          docker run --rm --entrypoint /nodejs/bin/node merchant-smoke:ci -e 'const fs = require("node:fs"); if (process.getuid() === 0 || ["/bin/sh", "/bin/bash", "/usr/bin/npm", "/usr/local/bin/npm", "/usr/local/lib/node_modules/npm", "/opt/yarn"].some(p => fs.existsSync(p))) process.exit(1); console.log("Non-root runtime without shell or npm verified.");'
           if output="$(docker run --rm merchant-smoke:ci 2>&1)"; then
             echo "Merchant probe unexpectedly succeeded outside Cloud Run"
             exit 1
@@ -45,10 +58,27 @@ jobs:
             exit 1
           fi
 
+      - name: Scan smoke image for known high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: merchant-smoke:ci
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '1'
+          format: table
+          timeout: 10m
+          cache: false
+
   verify-windows-script:
-    runs-on: windows-latest
+    runs-on: windows-2025
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - name: Parse Merchant Cloud Run PowerShell script
         shell: pwsh
         run: |

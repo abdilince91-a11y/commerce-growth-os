@@ -96,7 +96,7 @@ try {
     Invoke-CheckedGcloud -CommandArgs @(
         'run', 'jobs', 'create', $job, "--project=$ProjectId", "--region=$Region", "--image=$image",
         "--service-account=$ReaderEmail", '--tasks=1', '--max-retries=0', '--task-timeout=60s',
-        "--set-env-vars=GOOGLE_MERCHANT_ACCOUNT_ID=$MerchantAccountId,GOOGLE_MERCHANT_READER_EMAIL=$ReaderEmail"
+        "--set-env-vars=GOOGLE_MERCHANT_READ_ENABLED=true,GOOGLE_MERCHANT_ACCOUNT_ID=$MerchantAccountId,GOOGLE_MERCHANT_READER_EMAIL=$ReaderEmail"
     )
     Invoke-CheckedGcloud -CommandArgs @('run', 'jobs', 'execute', $job, "--project=$ProjectId", "--region=$Region", '--wait')
     Write-Host "Cloud Run check finished: $job. Inspect its execution logs for the returned count."

@@ -1,11 +1,32 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMerchantReadClient } from "./client";
 import { createCloudRunMerchantTokenProvider } from "./cloud-run-token";
 
 const reader = "merchant-reader@example-project.iam.gserviceaccount.com";
+beforeEach(() => vi.stubEnv("GOOGLE_MERCHANT_READ_ENABLED", "true"));
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Cloud Run Merchant token supplier", () => {
+  it.each([undefined, "", "false", "TRUE", "1"])("stops token acquisition unless reads are explicitly enabled (%j)", async (enabled) => {
+    vi.stubEnv("K_SERVICE", "merchant-reader");
+    vi.stubEnv("GOOGLE_MERCHANT_READ_ENABLED", enabled);
+    const metadata = vi.fn<typeof fetch>();
+    await expect(createCloudRunMerchantTokenProvider(reader, metadata)()).rejects.toThrow("Merchant authentication unavailable");
+    expect(metadata).not.toHaveBeenCalled();
+  });
+
+  it("rechecks the read switch on each call, including an existing provider", async () => {
+    vi.stubEnv("K_SERVICE", "merchant-reader");
+    const metadata = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(reader))
+      .mockResolvedValueOnce(Response.json({ access_token: "short-lived-token", token_type: "Bearer" }));
+    const provider = createCloudRunMerchantTokenProvider(reader, metadata);
+    await expect(provider()).resolves.toBe("short-lived-token");
+    vi.stubEnv("GOOGLE_MERCHANT_READ_ENABLED", "false");
+    await expect(provider()).rejects.toThrow("Merchant authentication unavailable");
+    expect(metadata).toHaveBeenCalledTimes(2);
+  });
+
   it("fails closed outside Cloud Run without requesting metadata", async () => {
     vi.stubEnv("K_SERVICE", "");
     vi.stubEnv("CLOUD_RUN_JOB", "");

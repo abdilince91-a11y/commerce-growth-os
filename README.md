@@ -71,3 +71,8 @@ docs/plans/              implementation plans
 
 ## First milestone
 See `docs/plans/v0.1.md`.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for enforced code/CI controls, production checks
+still required, and the incident pause and recovery procedure.
