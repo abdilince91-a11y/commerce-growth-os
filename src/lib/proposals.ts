@@ -65,9 +65,8 @@ export async function applyProposal(id: string): Promise<Proposal> {
   const proposal = await getProposalOrThrow(id);
   assertTransition(proposal.status, "applied");
   if (!proposal.decidedBy || !proposal.decidedAt) {
-    // Defensive check: assertTransition already guarantees the record
-    // passed through "approved", but a missing decidedBy would mean
-    // that approval happened without a human — never apply in that case.
+    // State alone is insufficient: approval metadata must also exist.
+    // Identity ownership remains the authenticated caller's responsibility.
     throw new Error("Proposal approval metadata unavailable");
   }
   assertDecisionIdentity(proposal.decidedBy);

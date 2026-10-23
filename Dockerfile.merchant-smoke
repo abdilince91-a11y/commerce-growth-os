@@ -1,8 +1,8 @@
-FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d
+FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:b0b1352373f14fe86376d423e6d283ea6b85b912ff55ca89bed8d2fe11c257b8
 WORKDIR /app
 COPY package.json ./package.json
 COPY src/lib/merchant-readonly/client.ts ./src/lib/merchant-readonly/client.ts
 COPY src/lib/merchant-readonly/cloud-run-token.ts ./src/lib/merchant-readonly/cloud-run-token.ts
 COPY scripts/merchant-readonly-smoke.ts ./scripts/merchant-readonly-smoke.ts
-USER node
-CMD ["node", "--experimental-strip-types", "scripts/merchant-readonly-smoke.ts"]
+USER 65532:65532
+CMD ["--experimental-strip-types", "scripts/merchant-readonly-smoke.ts"]

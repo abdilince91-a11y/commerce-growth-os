@@ -54,8 +54,11 @@ The fresh npm advisory response reported six affected packages (one critical,
 three high, two moderate), including Next.js 16.3.6. Updated compatible dependencies
 and raised direct dependency minimums to Next.js/eslint-config-next 16.4.3,
 Vite 8.3.5 and Vitest 5.0.5; sharp 0.35.5 and source-map-js 1.2.2 are locked.
-The smoke base was updated to the verified official Node 22 Bookworm slim manifest
-digest; it still needs the GitHub container scan before release.
+The first CI image scan reported HIGH/CRITICAL findings in the Debian 12 base
+and bundled, unused npm tools. The final smoke base uses the verified official
+Distroless Node 22 Debian 13 nonroot digest, removing the shell and package
+managers. CI also checks those runtime properties before scanning. Scanner
+findings describe package exposure, not proof of successful exploitation.
 
 Vendor advisories checked:
 - https://github.com/vercel/next.js/security/advisories/GHSA-673q-mjm6-r5xr
@@ -70,8 +73,10 @@ Vendor advisories checked:
 - npm audit reports zero known vulnerabilities after dependency updates.
 - All workflow/Dependabot YAML parses. Known credential-pattern search found no
   matches in tracked source files; this is not a comprehensive secrets audit.
-- No Docker engine or PowerShell runtime is installed in this workspace. The
-  image build/Trivy scan and Windows script parse must pass in GitHub CI.
+- No Docker engine or PowerShell runtime is installed in this workspace. GitHub
+  CI validates the image build/Trivy scan and Windows script parse; both passed
+  through the smoke execution stage on the first run, before the base-image
+  vulnerability findings described above. The final image must pass a fresh run.
 - Proposal persistence regression cases use a stateful fake database. The Prisma
   conditional update filters typecheck, but no live PostgreSQL integration test
   or independent human review has been completed.

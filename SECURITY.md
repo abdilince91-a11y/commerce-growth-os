@@ -5,7 +5,9 @@
 - Merchant product reads use a fixed Google origin, GET-only operations and one
   bound Merchant account. Redirects are rejected. Tokens and upstream bodies are
   omitted from errors. Requests time out; JSON responses are capped at 8 MiB
-  before parsing, with byte counting independent of Content-Length.
+  before parsing, with byte counting independent of Content-Length. Large valid
+  pages can exceed this cap; request a smaller pageSize rather than silently
+  removing the limit.
 - The keyless provider refuses token acquisition unless
   `GOOGLE_MERCHANT_READ_ENABLED` is exactly `true`, checked on every call. The
   manual one-shot deployment helper explicitly opts that job in. Setting it to
@@ -22,8 +24,10 @@
   operator server-side before calling this internal module. A supplied string is
   not evidence of a human. No external proposal execution exists yet; an outbox
   and platform idempotency design are needed before implementing one.
-- The Merchant smoke image runs as `node`, copies only the explicit probe files,
-  installs no npm dependencies and pins its Node base image by digest.
+- The Merchant smoke image uses the official Distroless Node 22 Debian 13
+  nonroot runtime (UID/GID 65532). It has no shell or package manager, copies only
+  the explicit probe files, installs no npm dependencies and pins its base by
+  digest. CI verifies the built image is non-root and has no shell or npm.
 - Required CI `verify` audits npm, generates Prisma, checks lint/types/tests,
   builds Next.js, verifies the smoke image fails closed outside Cloud Run, and
   scans its OS/runtime packages with Trivy. HIGH/CRITICAL findings fail the job,

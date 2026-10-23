@@ -48,6 +48,7 @@ jobs:
       - name: Build and check Merchant smoke image
         run: |
           docker build -f Dockerfile.merchant-smoke -t merchant-smoke:ci .
+          docker run --rm --entrypoint /nodejs/bin/node merchant-smoke:ci -e 'const fs = require("node:fs"); if (process.getuid() === 0 || ["/bin/sh", "/bin/bash", "/usr/bin/npm", "/usr/local/bin/npm", "/usr/local/lib/node_modules/npm", "/opt/yarn"].some(p => fs.existsSync(p))) process.exit(1); console.log("Non-root runtime without shell or npm verified.");'
           if output="$(docker run --rm merchant-smoke:ci 2>&1)"; then
             echo "Merchant probe unexpectedly succeeded outside Cloud Run"
             exit 1
