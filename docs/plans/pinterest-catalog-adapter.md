@@ -77,3 +77,9 @@ vulnerabilities. These are local checks; CI is reported on the pull request.
 No live catalog request, Cloud resource or store change was made. ADR 0006
 remains proposed pending independent review. Merge security PR #14 first, then
 retarget the stacked Pinterest PR to main and rerun required checks.
+
+The first CI run then reported GHSA-mrhx-c7xc-m3w5 in Zod <4.6.6, which the
+earlier local audit had not surfaced. Security PR #14 was updated to Zod 4.6.7
+and that dependency fix was incorporated here. All 868 tests, typecheck, lint
+and production build still pass. CI must pass on the updated commits before
+either PR is considered for merge; the earlier green security run is historical.
