@@ -76,3 +76,14 @@ See `docs/plans/v0.1.md`.
 
 See [SECURITY.md](SECURITY.md) for enforced code/CI controls, production checks
 still required, and the incident pause and recovery procedure.
+
+## Offline Pinterest catalog preview
+
+`src/lib/merchant/pinterest/` provides `mapOffer`, `mapOffers`,
+`createCatalogPreview` and `toFeedUpdateProposal`, plus a frozen adapter facade.
+Pass canonical product/variant records and a finished variant landing URL.
+The result is a validated retail feed preview, not a Pinterest API call.
+Any invalid active offer blocks CSV output. Nothing is uploaded or persisted.
+See [ADR 0006](docs/decisions/0006-pinterest-catalog-adapter.md) and the
+[implementation plan](docs/plans/pinterest-catalog-adapter.md) for supported
+fields, application limits and live checks still required before publication.
