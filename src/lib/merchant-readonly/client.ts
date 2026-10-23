@@ -24,6 +24,7 @@ export type MerchantReadDependencies = Readonly<{
 
 const API = "https://merchantapi.googleapis.com/products/v1/";
 const REQUEST_TIMEOUT_MS = 10_000;
+const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const ACCOUNT_ID = /^[0-9]{1,32}$/;
 const SEGMENT = /^[A-Za-z0-9_~-]{1,512}$/;
 
@@ -49,6 +50,36 @@ function optionalString(record: Record<string, unknown>, field: string): string 
   if (value === undefined) return undefined;
   if (typeof value !== "string") throw new Error("Invalid Merchant API response");
   return value;
+}
+
+/** Count streamed bytes before decoding/parsing; Content-Length is only a hint. */
+async function readBoundedJson(response: Response): Promise<unknown> {
+  const declaredLength = response.headers.get("content-length");
+  if (declaredLength !== null && Number(declaredLength) > MAX_RESPONSE_BYTES) {
+    void response.body?.cancel().catch(() => undefined);
+    throw new Error("Invalid Merchant API response");
+  }
+  if (!response.body) throw new Error("Invalid Merchant API response");
+  const reader = response.body.getReader();
+  const buffer = new Uint8Array(MAX_RESPONSE_BYTES);
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value.byteLength > MAX_RESPONSE_BYTES - bytes) throw new Error("Invalid Merchant API response");
+      buffer.set(value, bytes);
+      bytes += value.byteLength;
+    }
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, bytes));
+    return JSON.parse(text) as unknown;
+  } catch {
+    // Do not let cancellation failure replace the static public error.
+    void reader.cancel().catch(() => undefined);
+    throw new Error("Invalid Merchant API response");
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 function parseProduct(value: unknown, parent: string): MerchantProductView {
@@ -103,8 +134,11 @@ export function createMerchantReadClient(dependencies: MerchantReadDependencies)
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch { throw new Error("Merchant API request failed"); }
-    if (!response.ok) throw new Error(`Merchant API request failed (${response.status})`);
-    try { return await response.json() as unknown; } catch { throw new Error("Invalid Merchant API response"); }
+    if (!response.ok) {
+      void response.body?.cancel().catch(() => undefined);
+      throw new Error(`Merchant API request failed (${response.status})`);
+    }
+    try { return await readBoundedJson(response); } catch { throw new Error("Invalid Merchant API response"); }
   }
 
   return Object.freeze({

@@ -93,3 +93,56 @@ describe("Merchant processed-product read client", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 });
+
+const RESPONSE_LIMIT = 8 * 1024 * 1024;
+
+describe("bounded Merchant response bodies", () => {
+  it("rejects a declared oversized response before reading and cancels its body", async () => {
+    const response = new Response("secret-upstream-body", { headers: { "Content-Length": String(RESPONSE_LIMIT + 1) } });
+    const cancel = vi.spyOn(response.body!, "cancel");
+    const { client } = setup(response);
+    await expect(client.listProducts("123")).rejects.toThrow(/^Invalid Merchant API response$/);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it.each([undefined, "1"])("bounds chunked data even with a missing or false Content-Length (%j)", async (declared) => {
+    const cancel = vi.fn();
+    let chunks = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (chunks === 10) { controller.close(); return; }
+        controller.enqueue(new Uint8Array(1024 * 1024).fill(32));
+        chunks++;
+      },
+      cancel,
+    }, { highWaterMark: 0 });
+    const response = new Response(stream, { headers: declared ? { "Content-Length": declared } : {} });
+    const { client } = setup(response);
+    await expect(client.listProducts("123")).rejects.toThrow(/^Invalid Merchant API response$/);
+    expect(chunks).toBe(9);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("counts UTF-8 bytes rather than characters", async () => {
+    const response = new Response(JSON.stringify({ ignored: "é".repeat(RESPONSE_LIMIT / 2) }));
+    const { client } = setup(response);
+    await expect(client.listProducts("123")).rejects.toThrow(/^Invalid Merchant API response$/);
+  });
+
+  it("accepts a valid JSON response exactly at the byte limit", async () => {
+    const json = '{"products":[]}';
+    const { client } = setup(new Response(json + " ".repeat(RESPONSE_LIMIT - json.length)));
+    await expect(client.listProducts("123")).resolves.toEqual({ products: [] });
+  });
+
+  it.each([new Response("not JSON"), new Response(null)])("rejects malformed or missing JSON bodies", async (response) => {
+    await expect(setup(response).client.listProducts("123")).rejects.toThrow(/^Invalid Merchant API response$/);
+  });
+
+  it("hides body-stream failures and cancels the reader", async () => {
+    const response = new Response(new ReadableStream({
+      start(controller) { controller.error(new Error("secret body read failure")); },
+    }));
+    await expect(setup(response).client.listProducts("123")).rejects.toThrow(/^Invalid Merchant API response$/);
+  });
+});

@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { probeMerchantReadOnly } from "../../../scripts/merchant-readonly-smoke";
 
 const reader = "merchant-reader@example-project.iam.gserviceaccount.com";
+beforeEach(() => vi.stubEnv("GOOGLE_MERCHANT_READ_ENABLED", "true"));
 afterEach(() => vi.unstubAllEnvs());
 
 describe("one-shot Merchant read probe", () => {

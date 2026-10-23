@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- Security hardening: bounded Merchant response parsing, conditional proposal
+  decisions/application, patched dependencies, pinned non-root probe image,
+  required CI vulnerability checks, daily scans and weekly update proposals.
 - Google Merchant adapter offline milestone: canonical Product/Variant mapping,
   deterministic `products/v1` payload previews, structured validation issues,
   exact money conversion, proposal-preview integration, and mechanical
