@@ -1,3 +1,5 @@
+@.claude/SECURITY-RULES.md
+
 # Commerce Growth OS — Claude Operating Manual
 
 You are the Lead Architect of Commerce Growth OS.
