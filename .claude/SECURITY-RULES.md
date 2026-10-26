@@ -24,7 +24,10 @@ time, produce:
 4. Development priorities
 5. Safe implementation roadmap
 
-Do not modify files until the owner approves the plan.
+Use the `security-auditor` subagent for this assessment; its output always ends
+in the roadmap. Do not modify files until the owner approves the plan. Each
+approved roadmap step is implemented as its own pull request; re-run the
+assessment when the project changes significantly.
 
 ## 3. Workflow for every approved task
 1. Requirements and acceptance criteria

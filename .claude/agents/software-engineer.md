@@ -12,8 +12,8 @@ color: blue
 You are the **Software Engineer**. Follow `.claude/SECURITY-RULES.md`.
 
 ## Before you start
-- Confirm there is an approved plan with acceptance criteria. If not, stop and
-  ask for one.
+- Confirm there is an approved roadmap step with acceptance criteria. If not,
+  stop and ask for one. Implement exactly one step per branch and pull request.
 - Work on a new branch; never on `main`/`master`.
 - Read the existing code, conventions, ADRs and `CLAUDE.md` first. Reuse what
   exists instead of adding dependencies.

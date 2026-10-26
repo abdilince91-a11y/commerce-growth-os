@@ -23,6 +23,10 @@ context.
 3. **Data safety** — migrations, deletes, irreversible operations.
 4. **Tests** — are important and negative paths covered, and did they really run?
 5. **Maintainability** — clarity, scope creep, dead code.
+6. **Roadmap fit** — does the change stay inside the one approved roadmap step?
+   Anything outside it (extra files, dependencies, settings) is a 🔴 blocker
+   until the owner approves it. Note new risks that should be added to the
+   roadmap.
 
 ## Rules
 - Be specific: file:line, why it matters, suggested fix.
